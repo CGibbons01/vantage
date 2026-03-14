@@ -16,8 +16,9 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
-import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
+import { SubscriptionProvider, useSubscription } from "@/contexts/SubscriptionContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { isOnboardingComplete } from "@/utils/onboardingStorage";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,6 +40,35 @@ function AuthGuard() {
       router.replace("/auth-screen");
     }
   }, [user, loading, pathname]);
+
+  return null;
+}
+
+
+function SubscriptionRedirect() {
+  const { isSubscribed, loading } = useSubscription();
+  const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isOnboardingComplete().then(setOnboardingDone).catch(() => setOnboardingDone(true));
+  }, [pathname]);
+
+  useEffect(() => {
+    if (loading || onboardingDone === null) return;
+    const onOnboarding = pathname.startsWith("/onboarding");
+    const onPaywall = pathname === "/paywall";
+    const onAuthScreen = pathname === "/auth-screen";
+    if (onOnboarding || onPaywall || onAuthScreen) return;
+    if (!onboardingDone) return;
+    if (!user) {
+      router.replace("/auth-screen");
+    } else if (!isSubscribed) {
+      router.replace("/paywall");
+    }
+  }, [isSubscribed, loading, pathname, onboardingDone, user]);
 
   return null;
 }
@@ -94,6 +124,7 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <SubscriptionProvider>
+          <SubscriptionRedirect />
         <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
           <SafeAreaProvider>
             <WidgetProvider>

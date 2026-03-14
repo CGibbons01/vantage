@@ -31,8 +31,8 @@ export default function AuthScreen() {
 
   useEffect(() => {
     if (user) {
-      console.log('[Auth] User authenticated, navigating to tabs');
-      router.replace('/(tabs)/');
+      console.log('[Auth] User authenticated, navigating to paywall');
+      router.replace('/paywall');
     }
   }, [user]);
 

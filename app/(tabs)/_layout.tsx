@@ -2,6 +2,7 @@ import React from "react";
 import { View } from "react-native";
 import { Tabs, useRouter, usePathname } from "expo-router";
 import FloatingTabBar from "@/components/FloatingTabBar";
+import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 
 const TABS = [
   { name: "index", route: "/(tabs)/", icon: "home" as const, label: "Dashboard" },
@@ -11,6 +12,8 @@ const TABS = [
 ];
 
 export default function TabLayout() {
+  useSubscriptionGuard();
+
   return (
     <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
       <Tabs

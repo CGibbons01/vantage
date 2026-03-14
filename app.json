@@ -42,9 +42,9 @@
     "extra": {
       "router": {},
       "backendUrl": "https://gwud9jhy8v3d2k6g3hegh7fncuhskkcs.app.specular.dev",
-      "revenueCatApiKeyIos": "appl_PzWGHulMMlggFluqdkaHTJWbKiJ",
-      "revenueCatApiKeyAndroid": "goog_tSXPFzzauLbBIWtSgavhwcZiVrP",
-      "revenueCatEntitlementId": "pro",
+      "revenueCatApiKeyIos": "appl_RZUixsPyxzqSXhLNiJiPfvbAHbV",
+      "revenueCatApiKeyAndroid": "goog_XmUPULdxiZiiPIiYHyVtlcBSHFc",
+      "revenueCatEntitlementId": "premium",
       "nativelyProjectId": "24750422-3c7f-41af-8b70-5237cf4860c6",
       "revenueCatTestApiKeyIos": "test_XxUpjSNYbrnurJJWiJtSvRVyBKc",
       "revenueCatTestApiKeyAndroid": "test_XxUpjSNYbrnurJJWiJtSvRVyBKc"
