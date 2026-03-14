@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "i-have-a-vibecode-ap",
-    "slug": "i-have-a-vibecode-ap",
+    "name": "Vantage ai recruitment",
+    "slug": "vantage-ai-recruitment",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-odn.png",
@@ -35,7 +35,7 @@
       "expo-web-browser",
       "expo-secure-store"
     ],
-    "scheme": "ihaveavibecodeap",
+    "scheme": "vantageairecruitment",
     "experiments": {
       "typedRoutes": true
     },
