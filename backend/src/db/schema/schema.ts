@@ -1,13 +1,34 @@
-/**
- * Define your database schema here using Drizzle ORM.
- * Avoid conflicting with potential other schema files in the same directory.
- *
- * Example:
- * import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
- *
- * export const notes = pgTable('notes', {
- *   id: uuid('id').primaryKey().defaultRandom(),
- *   name: text('name').notNull(),
- *   createdAt: timestamp('created_at').notNull().defaultNow(),
- * });
- */
+import { pgTable, uuid, text, real, timestamp } from 'drizzle-orm/pg-core';
+import { user } from './auth-schema.js';
+
+export const profiles = pgTable('profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().unique().references(() => user.id, { onDelete: 'cascade' }),
+  headline: text('headline'),
+  summary: text('summary'),
+  location: text('location'),
+  phone: text('phone'),
+  linkedinUrl: text('linkedin_url'),
+  skills: text('skills').notNull().default('[]'),
+  experience: text('experience').notNull().default('[]'),
+  education: text('education').notNull().default('[]'),
+  cvScore: real('cv_score'),
+  industryFit: text('industry_fit'),
+  cvText: text('cv_text'),
+  cvFilename: text('cv_filename'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const jobApplications = pgTable('job_applications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  jobId: text('job_id').notNull(),
+  jobTitle: text('job_title').notNull(),
+  company: text('company').notNull(),
+  location: text('location').notNull(),
+  jobUrl: text('job_url').notNull(),
+  status: text('status').notNull().default('saved'),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
