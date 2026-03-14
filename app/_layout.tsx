@@ -1,7 +1,7 @@
 import "react-native-reanimated";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,14 +16,32 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
-// Note: Error logging is auto-initialized via index.ts import
+import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)", // Ensure any route can link back to `/`
+  initialRouteName: "(tabs)",
 };
+
+const AUTH_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/paywall", "/onboarding"];
+
+function AuthGuard() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (loading) return;
+    const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
+    if (!user && !isAuthRoute) {
+      router.replace("/auth-screen");
+    }
+  }, [user, loading, pathname]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -38,64 +56,84 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  React.useEffect(() => {
-    if (
-      !networkState.isConnected &&
-      networkState.isInternetReachable === false
-    ) {
+  useEffect(() => {
+    if (!networkState.isConnected && networkState.isInternetReachable === false) {
       Alert.alert(
-        "🔌 You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
+        "You are offline",
+        "Check your connection and try again."
       );
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded) {
-    return null;
-  }
-
-  const CustomDefaultTheme: Theme = {
-    ...DefaultTheme,
-    dark: false,
-    colors: {
-      primary: "rgb(0, 122, 255)", // System Blue
-      background: "rgb(242, 242, 247)", // Light mode background
-      card: "rgb(255, 255, 255)", // White cards/surfaces
-      text: "rgb(0, 0, 0)", // Black text for light mode
-      border: "rgb(216, 216, 220)", // Light gray for separators/borders
-      notification: "rgb(255, 59, 48)", // System Red
-    },
-  };
+  if (!loaded) return null;
 
   const CustomDarkTheme: Theme = {
     ...DarkTheme,
     colors: {
-      primary: "rgb(10, 132, 255)", // System Blue (Dark Mode)
-      background: "rgb(1, 1, 1)", // True black background for OLED displays
-      card: "rgb(28, 28, 30)", // Dark card/surface color
-      text: "rgb(255, 255, 255)", // White text for dark mode
-      border: "rgb(44, 44, 46)", // Dark gray for separators/borders
-      notification: "rgb(255, 69, 58)", // System Red (Dark Mode)
+      primary: "#F59E0B",
+      background: "#0F172A",
+      card: "#1E293B",
+      text: "#F8FAFC",
+      border: "#334155",
+      notification: "#EF4444",
     },
   };
+
+  const CustomDefaultTheme: Theme = {
+    ...DefaultTheme,
+    colors: {
+      primary: "#F59E0B",
+      background: "#0F172A",
+      card: "#1E293B",
+      text: "#F8FAFC",
+      border: "#334155",
+      notification: "#EF4444",
+    },
+  };
+
   return (
-    <>
-      <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
+    <AuthProvider>
+      <SubscriptionProvider>
+        <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
           <SafeAreaProvider>
             <WidgetProvider>
-              <GestureHandlerRootView>
-              <Stack>
-                {/* Main app with tabs */}
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              </Stack>
-              <SystemBars style={"auto"} />
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <StatusBar style="light" animated />
+                <AuthGuard />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
+                  <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="job/[id]"
+                    options={{
+                      headerShown: true,
+                      headerTitle: "Job Details",
+                      headerBackButtonDisplayMode: "minimal",
+                      headerStyle: { backgroundColor: "#0F172A" },
+                      headerTintColor: "#F8FAFC",
+                    }}
+                  />
+                  <Stack.Screen
+                    name="profile/edit"
+                    options={{
+                      headerShown: true,
+                      headerTitle: "Edit Profile",
+                      headerBackButtonDisplayMode: "minimal",
+                      headerStyle: { backgroundColor: "#0F172A" },
+                      headerTintColor: "#F8FAFC",
+                    }}
+                  />
+                </Stack>
+                <SystemBars style="light" />
               </GestureHandlerRootView>
             </WidgetProvider>
           </SafeAreaProvider>
         </ThemeProvider>
-    </>
+      </SubscriptionProvider>
+    </AuthProvider>
   );
 }
