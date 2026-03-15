@@ -74,19 +74,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchUser();
 
-    const subscription = Linking.addEventListener("url", (event) => {
-      console.log("Deep link received, refreshing user session");
-      fetchUser();
-    });
+    if (Platform.OS !== "web") {
+      // On native, the expoClient plugin handles the deep link internally and
+      // stores the session token. We wait 800ms after the deep link fires so
+      // the plugin has time to complete the token exchange before we call
+      // getSession() — otherwise we read an empty session and stay logged out.
+      const subscription = Linking.addEventListener("url", (event) => {
+        const url = event.url;
+        if (url.startsWith("vantageairecruitment://auth-callback")) {
+          setTimeout(() => fetchUser(), 800);
+        }
+      });
 
-    const intervalId = setInterval(() => {
-      fetchUser();
-    }, 5 * 60 * 1000);
+      const intervalId = setInterval(() => {
+        fetchUser();
+      }, 5 * 60 * 1000);
 
-    return () => {
-      subscription.remove();
-      clearInterval(intervalId);
-    };
+      return () => {
+        subscription.remove();
+        clearInterval(intervalId);
+      };
+    }
   }, []);
 
   const fetchUser = async () => {
@@ -133,6 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         throw new Error(error.message || "Social sign in failed");
       }
+      // expoClient resolves the promise only after the in-app browser closes
+      // and the session is stored — safe to fetch immediately here.
       await fetchUser();
     }
   };
