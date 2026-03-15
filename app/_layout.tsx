@@ -27,7 +27,7 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
-const AUTH_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/paywall", "/onboarding"];
+const AUTH_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/paywall", "/onboarding", "/welcome", "/privacy"];
 
 function AuthGuard() {
   const { user, loading } = useAuth();
@@ -38,7 +38,8 @@ function AuthGuard() {
     if (loading) return;
     const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
     if (!user && !isAuthRoute) {
-      router.replace("/auth-screen");
+      console.log("[AuthGuard] Unauthenticated user, redirecting to /welcome");
+      router.replace("/welcome");
     }
   }, [user, loading, pathname]);
 
@@ -62,7 +63,9 @@ function SubscriptionRedirect() {
     const onOnboarding = pathname.startsWith("/onboarding");
     const onPaywall = pathname === "/paywall";
     const onAuthScreen = pathname === "/auth-screen";
-    if (onOnboarding || onPaywall || onAuthScreen) return;
+    const onWelcome = pathname === "/welcome";
+    const onPrivacy = pathname === "/privacy";
+    if (onOnboarding || onPaywall || onAuthScreen || onWelcome || onPrivacy) return;
     if (!onboardingDone) return;
     if (!user) {
       router.replace("/auth-screen");
@@ -140,6 +143,17 @@ export default function RootLayout() {
                     <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
                     <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
                     <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                    <Stack.Screen name="welcome" options={{ headerShown: false }} />
+                    <Stack.Screen
+                      name="privacy"
+                      options={{
+                        headerShown: true,
+                        headerTitle: "Privacy Policy",
+                        headerBackButtonDisplayMode: "minimal",
+                        headerStyle: { backgroundColor: "#0F2B5B" },
+                        headerTintColor: "#F8FAFC",
+                      }}
+                    />
                     <Stack.Screen
                       name="notifications"
                       options={{
