@@ -379,7 +379,17 @@ export default function DashboardScreen() {
   }, [fetchProfile]);
 
   const handleUploadCV = async () => {
-    console.log('[Dashboard] Upload CV button pressed');
+    console.log('[Dashboard] CV upload started');
+    console.log('[Dashboard] BACKEND_URL:', BACKEND_URL || '(empty — not configured)');
+
+    if (!BACKEND_URL) {
+      const msg = 'Backend not configured. Please try again later.';
+      console.error('[Dashboard]', msg);
+      setError(msg);
+      Alert.alert('Upload Failed', msg);
+      return;
+    }
+
     let pickerResult: DocumentPicker.DocumentPickerResult | null = null;
     try {
       pickerResult = await DocumentPicker.getDocumentAsync({
@@ -389,6 +399,7 @@ export default function DashboardScreen() {
     } catch (e: any) {
       const msg = e?.message || JSON.stringify(e) || 'Unknown picker error';
       console.error('[Dashboard] Document picker error:', msg);
+      setError(`Could not open file picker: ${msg}`);
       Alert.alert('Upload Failed', `Could not open file picker: ${msg}`);
       return;
     }
@@ -400,7 +411,9 @@ export default function DashboardScreen() {
 
     const asset = pickerResult.assets[0];
     if (!asset) {
-      Alert.alert('Upload Failed', 'No file was selected.');
+      const msg = 'No file was selected.';
+      setError(msg);
+      Alert.alert('Upload Failed', msg);
       return;
     }
 
@@ -409,11 +422,16 @@ export default function DashboardScreen() {
     setUploading(true);
     setUploadSuccess(false);
     setCvResult(null);
+    setError('');
 
     try {
       const token = await getBearerToken();
+      console.log('[Dashboard] Token retrieved:', token ? 'yes' : 'no');
       if (!token) {
-        throw new Error('You are not signed in. Please sign in and try again.');
+        const msg = 'You are not signed in. Please sign in and try again.';
+        setError(msg);
+        Alert.alert('Not Signed In', msg);
+        return;
       }
 
       const formData = new FormData();
@@ -437,8 +455,9 @@ export default function DashboardScreen() {
         console.log('[Dashboard] Appended native file object to FormData');
       }
 
-      console.log('[Dashboard] POSTing CV to /api/cv/score');
-      const response = await fetch(`${BACKEND_URL}/api/cv/score`, {
+      const uploadUrl = `${BACKEND_URL}/api/cv/score`;
+      console.log('[Dashboard] FormData built, sending request to', uploadUrl);
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -456,7 +475,7 @@ export default function DashboardScreen() {
 
       const data: UploadResult = await response.json();
       const resolvedScore = data?.score ?? data?.cv_score ?? null;
-      console.log('[Dashboard] CV upload successful, score:', resolvedScore, 'full response:', JSON.stringify(data));
+      console.log('[Dashboard] Upload success, data:', JSON.stringify(data));
 
       setUploadSuccess(true);
 
@@ -487,6 +506,7 @@ export default function DashboardScreen() {
     } catch (e: any) {
       const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'Unknown error';
       console.error('[Dashboard] CV upload error:', msg, e);
+      setError(msg);
       Alert.alert('Upload Failed', msg);
     } finally {
       setUploading(false);
