@@ -25,6 +25,10 @@ import {
   PenLine,
   Mail,
   Star,
+  Check,
+  AlertTriangle,
+  Lightbulb,
+  ChevronRight,
 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,6 +37,9 @@ import { COLORS, getScoreColor } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 
 const USER_CV_KEY = 'user_cv_text';
+
+// Card background matching the navy/amber theme spec
+const CARD_BG = '#1A3A6B';
 
 interface IndustryFit {
   industry: string;
@@ -54,6 +61,24 @@ interface Profile {
   updated_at?: string;
 }
 
+type CVResult = {
+  score: number;
+  industry_fit: string;
+  skills: string[];
+  summary?: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  improvements?: string[];
+  section_scores?: {
+    summary: number;
+    experience: number;
+    education: number;
+    skills: number;
+    formatting: number;
+  };
+};
+
+// Legacy shape from upload response
 interface UploadResult {
   cv_score?: number;
   score?: number;
@@ -62,6 +87,20 @@ interface UploadResult {
   extracted_text?: string;
   feedback?: string;
   suggestions?: string[];
+  // enriched fields
+  industry_fit?: string;
+  skills?: string[];
+  summary?: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  improvements?: string[];
+  section_scores?: CVResult['section_scores'];
+}
+
+function getSectionScoreColor(score: number): string {
+  if (score >= 80) return COLORS.success;
+  if (score >= 60) return COLORS.accent;
+  return COLORS.error;
 }
 
 function CircularScore({ score, size = 100 }: { score: number; size?: number }) {
@@ -74,7 +113,7 @@ function CircularScore({ score, size = 100 }: { score: number; size?: number }) 
           height: size,
           borderRadius: size / 2,
           borderWidth: 6,
-          borderColor: COLORS.border,
+          borderColor: 'rgba(255,255,255,0.1)',
           justifyContent: 'center',
           alignItems: 'center',
           position: 'absolute',
@@ -103,54 +142,197 @@ function CircularScore({ score, size = 100 }: { score: number; size?: number }) 
   );
 }
 
-function ScoreRevealBanner({ score, feedback }: { score: number; feedback?: string }) {
+function SectionScorePill({ label, score }: { label: string; score: number }) {
+  const color = getSectionScoreColor(score);
+  const bgColor = score >= 80
+    ? 'rgba(34,197,94,0.12)'
+    : score >= 60
+    ? 'rgba(245,158,11,0.12)'
+    : 'rgba(239,68,68,0.12)';
+  return (
+    <View style={[styles.sectionPill, { borderColor: color, backgroundColor: bgColor }]}>
+      <Text style={[styles.sectionPillScore, { color }]}>{score}</Text>
+      <Text style={styles.sectionPillLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function StrengthsCard({ strengths }: { strengths: string[] }) {
+  return (
+    <View style={styles.analysisCard}>
+      <View style={styles.analysisCardHeader}>
+        <View style={[styles.analysisIconCircle, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+          <Check size={16} color={COLORS.success} />
+        </View>
+        <Text style={styles.analysisCardTitle}>Strengths</Text>
+      </View>
+      {strengths.map((item, i) => (
+        <View key={i} style={styles.analysisRow}>
+          <View style={[styles.analysisBullet, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+            <Check size={12} color={COLORS.success} />
+          </View>
+          <Text style={styles.analysisRowText}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function WeaknessesCard({ weaknesses }: { weaknesses: string[] }) {
+  return (
+    <View style={styles.analysisCard}>
+      <View style={styles.analysisCardHeader}>
+        <View style={[styles.analysisIconCircle, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+          <AlertTriangle size={16} color={COLORS.accent} />
+        </View>
+        <Text style={styles.analysisCardTitle}>Areas to Watch</Text>
+      </View>
+      {weaknesses.map((item, i) => (
+        <View key={i} style={styles.analysisRow}>
+          <View style={[styles.analysisBullet, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+            <AlertTriangle size={12} color={COLORS.accent} />
+          </View>
+          <Text style={styles.analysisRowText}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function ImprovementsCard({ improvements }: { improvements: string[] }) {
+  return (
+    <View style={styles.analysisCard}>
+      <View style={styles.analysisCardHeader}>
+        <View style={[styles.analysisIconCircle, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+          <Lightbulb size={16} color={COLORS.accent} />
+        </View>
+        <Text style={styles.analysisCardTitle}>How to Improve</Text>
+      </View>
+      {improvements.map((item, i) => {
+        const num = i + 1;
+        return (
+          <View key={i} style={styles.analysisRow}>
+            <View style={styles.improvementBadge}>
+              <Text style={styles.improvementBadgeText}>{num}</Text>
+            </View>
+            <Text style={styles.analysisRowText}>{item}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function CVAnalysisSection({ result }: { result: CVResult }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.88)).current;
-  const color = getScoreColor(score);
-  const label = score <= 40 ? 'Needs Work' : score <= 70 ? 'Good' : 'Excellent';
-  const desc = score <= 40
-    ? 'Your CV needs significant improvements to stand out.'
-    : score <= 70
-    ? 'Your CV is solid. A few tweaks could make it great.'
-    : 'Your CV is highly competitive. Keep it updated!';
+  const translateY = useRef(new Animated.Value(16)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 80,
-        friction: 8,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start();
-  }, [fadeAnim, scaleAnim]);
+  }, [fadeAnim, translateY]);
+
+  const scoreColor = getScoreColor(result.score);
+  const scoreLabel = result.score <= 40 ? 'Needs Work' : result.score <= 70 ? 'Good' : 'Excellent';
+  const scoreDesc = result.score <= 40
+    ? 'Your CV needs significant improvements to stand out.'
+    : result.score <= 70
+    ? 'Your CV is solid. A few tweaks could make it great.'
+    : 'Your CV is highly competitive. Keep it updated!';
+
+  const sectionScores = result.section_scores;
+  const sectionEntries: { label: string; key: keyof NonNullable<CVResult['section_scores']> }[] = [
+    { label: 'Summary', key: 'summary' },
+    { label: 'Experience', key: 'experience' },
+    { label: 'Education', key: 'education' },
+    { label: 'Skills', key: 'skills' },
+    { label: 'Formatting', key: 'formatting' },
+  ];
+
+  const hasStrengths = result.strengths && result.strengths.length > 0;
+  const hasWeaknesses = result.weaknesses && result.weaknesses.length > 0;
+  const hasImprovements = result.improvements && result.improvements.length > 0;
+  const hasSkills = result.skills && result.skills.length > 0;
 
   return (
-    <Animated.View
-      style={[
-        styles.scoreRevealCard,
-        { borderColor: color, opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
-      ]}
-    >
-      <View style={styles.scoreRevealHeader}>
-        <View style={[styles.scoreRevealBadge, { backgroundColor: color + '22' }]}>
-          <Star size={14} color={color} />
-          <Text style={[styles.scoreRevealBadgeText, { color }]}>CV Analysed</Text>
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
+      {/* Score Card */}
+      <View style={[styles.analysisCard, styles.scoreCardLayout]}>
+        <View style={styles.scoreCardLeft}>
+          <View style={[styles.scoreRevealBadge, { backgroundColor: scoreColor + '22' }]}>
+            <Star size={13} color={scoreColor} />
+            <Text style={[styles.scoreRevealBadgeText, { color: scoreColor }]}>CV Analysed</Text>
+          </View>
+          <Text style={[styles.scoreMainLabel, { color: scoreColor }]}>{scoreLabel}</Text>
+          <Text style={styles.scoreMainDesc}>{scoreDesc}</Text>
+          {result.summary ? (
+            <Text style={styles.scoreSummaryText} numberOfLines={3}>{result.summary}</Text>
+          ) : null}
         </View>
-        <CheckCircle size={18} color={COLORS.success} />
+        <CircularScore score={result.score} size={96} />
       </View>
-      <View style={styles.scoreRevealBody}>
-        <CircularScore score={score} size={96} />
-        <View style={styles.scoreRevealInfo}>
-          <Text style={[styles.scoreRevealLabel, { color }]}>{label}</Text>
-          <Text style={styles.scoreRevealDesc}>{feedback || desc}</Text>
+
+      {/* Section Scores */}
+      {sectionScores ? (
+        <View style={styles.analysisCard}>
+          <View style={styles.analysisCardHeader}>
+            <Text style={styles.analysisCardTitle}>Section Scores</Text>
+          </View>
+          <View style={styles.sectionPillsRow}>
+            {sectionEntries.map(({ label, key }) => {
+              const val = sectionScores[key];
+              return val != null ? (
+                <SectionScorePill key={key} label={label} score={val} />
+              ) : null;
+            })}
+          </View>
         </View>
-      </View>
+      ) : null}
+
+      {/* Strengths */}
+      {hasStrengths ? <StrengthsCard strengths={result.strengths!} /> : null}
+
+      {/* Weaknesses */}
+      {hasWeaknesses ? <WeaknessesCard weaknesses={result.weaknesses!} /> : null}
+
+      {/* Improvements */}
+      {hasImprovements ? <ImprovementsCard improvements={result.improvements!} /> : null}
+
+      {/* Skills */}
+      {hasSkills ? (
+        <View style={styles.analysisCard}>
+          <View style={styles.analysisCardHeader}>
+            <Text style={styles.analysisCardTitle}>Detected Skills</Text>
+          </View>
+          <View style={styles.skillsRow}>
+            {result.skills.map((skill, i) => (
+              <View key={i} style={styles.skillChip}>
+                <Text style={styles.skillChipText}>{skill}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Industry Fit */}
+      {result.industry_fit ? (
+        <View style={styles.analysisCard}>
+          <View style={styles.analysisCardHeader}>
+            <View style={[styles.analysisIconCircle, { backgroundColor: COLORS.accentMuted }]}>
+              <TrendingUp size={16} color={COLORS.accent} />
+            </View>
+            <Text style={styles.analysisCardTitle}>Industry Fit</Text>
+          </View>
+          <View style={styles.industryFitRow}>
+            <Text style={styles.industryFitName}>{result.industry_fit}</Text>
+            <View style={[styles.industryFitBadge, { backgroundColor: COLORS.accentMuted }]}>
+              <ChevronRight size={14} color={COLORS.accent} />
+            </View>
+          </View>
+        </View>
+      ) : null}
     </Animated.View>
   );
 }
@@ -165,7 +347,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
-  const [freshScore, setFreshScore] = useState<UploadResult | null>(null);
+  const [cvResult, setCvResult] = useState<CVResult | null>(null);
   const [error, setError] = useState('');
 
   const fetchProfile = useCallback(async () => {
@@ -226,7 +408,7 @@ export default function DashboardScreen() {
 
     setUploading(true);
     setUploadSuccess(false);
-    setFreshScore(null);
+    setCvResult(null);
 
     try {
       const token = await getBearerToken();
@@ -236,8 +418,6 @@ export default function DashboardScreen() {
 
       const formData = new FormData();
 
-      // On web, fetch the file as a Blob and append it properly.
-      // On native, use the { uri, name, type } object pattern.
       if (typeof document !== 'undefined') {
         console.log('[Dashboard] Web environment: fetching file as Blob');
         const blobResponse = await fetch(asset.uri);
@@ -249,7 +429,6 @@ export default function DashboardScreen() {
         formData.append('cv', blob, fileName);
         console.log('[Dashboard] Appended Blob to FormData, size:', blob.size);
       } else {
-        // Native environment (iOS / Android)
         formData.append('cv', {
           uri: asset.uri,
           name: asset.name || 'cv.pdf',
@@ -262,7 +441,6 @@ export default function DashboardScreen() {
       const response = await fetch(`${BACKEND_URL}/api/cv/score`, {
         method: 'POST',
         headers: {
-          // Do NOT set Content-Type — let fetch set multipart/form-data with boundary automatically
           Authorization: `Bearer ${token}`,
         },
         body: formData,
@@ -277,15 +455,26 @@ export default function DashboardScreen() {
       }
 
       const data: UploadResult = await response.json();
-      const resolvedScore = data?.cv_score ?? data?.score ?? null;
+      const resolvedScore = data?.score ?? data?.cv_score ?? null;
       console.log('[Dashboard] CV upload successful, score:', resolvedScore, 'full response:', JSON.stringify(data));
 
       setUploadSuccess(true);
+
       if (resolvedScore != null) {
-        setFreshScore({ ...data, cv_score: resolvedScore });
+        const result: CVResult = {
+          score: Number(resolvedScore),
+          industry_fit: data.industry_fit ?? '',
+          skills: data.skills ?? [],
+          summary: data.summary,
+          strengths: data.strengths,
+          weaknesses: data.weaknesses,
+          improvements: data.improvements,
+          section_scores: data.section_scores,
+        };
+        console.log('[Dashboard] Setting CV result with enriched analysis:', JSON.stringify(result));
+        setCvResult(result);
       }
 
-      // Save CV text to AsyncStorage for AI job matching
       const cvText = data?.cv_text || data?.text || data?.extracted_text || '';
       if (cvText) {
         await AsyncStorage.setItem(USER_CV_KEY, cvText);
@@ -294,7 +483,6 @@ export default function DashboardScreen() {
         console.log('[Dashboard] No CV text in response to save');
       }
 
-      // Refresh profile in background to update cv_filename and persistent score
       await fetchProfile();
     } catch (e: any) {
       const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'Unknown error';
@@ -308,8 +496,8 @@ export default function DashboardScreen() {
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
   const topSkills = profile?.skills?.slice(0, 5) ?? [];
 
-  // Use freshScore for immediate display; fall back to profile score
-  const displayScore = freshScore?.cv_score ?? profile?.cv_score ?? null;
+  // Persistent score from profile (shown when no fresh cvResult)
+  const displayScore = profile?.cv_score ?? null;
   const scoreColor = displayScore != null ? getScoreColor(displayScore) : COLORS.accent;
   const scoreLabel = displayScore != null
     ? displayScore <= 40 ? 'Needs Work' : displayScore <= 70 ? 'Good' : 'Excellent'
@@ -403,7 +591,7 @@ export default function DashboardScreen() {
               </>
             )}
           </AnimatedPressable>
-          {uploadSuccess && !freshScore && (
+          {uploadSuccess && !cvResult && (
             <View style={styles.successRow}>
               <CheckCircle size={16} color={COLORS.success} />
               <Text style={styles.successText}>CV uploaded successfully!</Text>
@@ -430,70 +618,69 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Immediate Score Reveal after upload */}
-      {freshScore?.cv_score != null && (
-        <ScoreRevealBanner
-          score={freshScore.cv_score}
-          feedback={freshScore.feedback}
-        />
-      )}
-
-      {/* CV Score Card (from profile — shown when no fresh score or after refresh) */}
-      {displayScore != null && !freshScore && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>CV Score</Text>
-          <View style={styles.scoreRow}>
-            <CircularScore score={displayScore} size={100} />
-            <View style={styles.scoreInfo}>
-              <Text style={[styles.scoreLabel, { color: scoreColor }]}>{scoreLabel}</Text>
-              <Text style={styles.scoreDesc}>{scoreDesc}</Text>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Industry Fit Card */}
-      {profile?.industry_fit && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Industry Fit</Text>
-          <View style={styles.industryRow}>
-            <TrendingUp size={18} color={COLORS.accent} />
-            <Text style={styles.industryName}>{profile.industry_fit.industry}</Text>
-            <Text style={[styles.industryScore, { color: getScoreColor(profile.industry_fit.score) }]}>
-              {profile.industry_fit.score}%
-            </Text>
-          </View>
-          <View style={styles.progressBarBg}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${profile.industry_fit.score}%` as any,
-                  backgroundColor: getScoreColor(profile.industry_fit.score),
-                },
-              ]}
-            />
-          </View>
-          {profile.industry_fit.reasoning ? (
-            <Text style={styles.industryReasoning} numberOfLines={3}>
-              {profile.industry_fit.reasoning}
-            </Text>
-          ) : null}
-        </View>
-      )}
-
-      {/* Skills */}
-      {topSkills.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Top Skills</Text>
-          <View style={styles.skillsRow}>
-            {topSkills.map((skill, i) => (
-              <View key={i} style={styles.skillChip}>
-                <Text style={styles.skillChipText}>{skill}</Text>
+      {/* Rich CV Analysis (shown immediately after upload) */}
+      {cvResult ? (
+        <CVAnalysisSection result={cvResult} />
+      ) : (
+        <>
+          {/* Persistent score card from profile (shown when no fresh analysis) */}
+          {displayScore != null && (
+            <View style={styles.persistentScoreCard}>
+              <Text style={styles.cardTitle}>CV Score</Text>
+              <View style={styles.scoreRow}>
+                <CircularScore score={displayScore} size={100} />
+                <View style={styles.scoreInfo}>
+                  <Text style={[styles.scoreLabel, { color: scoreColor }]}>{scoreLabel}</Text>
+                  <Text style={styles.scoreDesc}>{scoreDesc}</Text>
+                </View>
               </View>
-            ))}
-          </View>
-        </View>
+            </View>
+          )}
+
+          {/* Industry Fit Card (from profile) */}
+          {profile?.industry_fit && (
+            <View style={styles.persistentScoreCard}>
+              <Text style={styles.cardTitle}>Industry Fit</Text>
+              <View style={styles.industryRow}>
+                <TrendingUp size={18} color={COLORS.accent} />
+                <Text style={styles.industryName}>{profile.industry_fit.industry}</Text>
+                <Text style={[styles.industryScore, { color: getScoreColor(profile.industry_fit.score) }]}>
+                  {profile.industry_fit.score}%
+                </Text>
+              </View>
+              <View style={styles.progressBarBg}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${profile.industry_fit.score}%` as any,
+                      backgroundColor: getScoreColor(profile.industry_fit.score),
+                    },
+                  ]}
+                />
+              </View>
+              {profile.industry_fit.reasoning ? (
+                <Text style={styles.industryReasoning} numberOfLines={3}>
+                  {profile.industry_fit.reasoning}
+                </Text>
+              ) : null}
+            </View>
+          )}
+
+          {/* Skills (from profile) */}
+          {topSkills.length > 0 && (
+            <View style={styles.persistentScoreCard}>
+              <Text style={styles.cardTitle}>Top Skills</Text>
+              <View style={styles.skillsRow}>
+                {topSkills.map((skill, i) => (
+                  <View key={i} style={styles.skillChip}>
+                    <Text style={styles.skillChipText}>{skill}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </>
       )}
 
       {/* Quick Actions */}
@@ -553,6 +740,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   content: { paddingHorizontal: 20 },
   centered: { flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' },
+
+  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -584,6 +773,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarText: { fontSize: 18, fontWeight: '700', color: COLORS.accent },
+
+  // Error
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -596,6 +787,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error,
   },
   errorBannerText: { color: COLORS.error, fontSize: 13, flex: 1 },
+
+  // Upload
   uploadCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
@@ -665,21 +858,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
   },
   reuploadText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
-  // Score reveal banner (animated, shown immediately after upload)
-  scoreRevealCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 2,
-    boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-  },
-  scoreRevealHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
+
+  // Score reveal badge (inside CVAnalysisSection)
   scoreRevealBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -687,14 +867,163 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 20,
+    alignSelf: 'flex-start',
+    marginBottom: 10,
   },
   scoreRevealBadgeText: { fontSize: 12, fontWeight: '700' },
-  scoreRevealBody: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  scoreRevealInfo: { flex: 1 },
-  scoreRevealLabel: { fontSize: 20, fontWeight: '800', marginBottom: 6 },
-  scoreRevealDesc: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
-  // Persistent score card
-  card: {
+
+  // Analysis cards (navy #1A3A6B bg)
+  analysisCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
+  },
+  analysisCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  analysisIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  analysisCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.text,
+    letterSpacing: -0.2,
+  },
+
+  // Score card layout inside analysis
+  scoreCardLayout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  scoreCardLeft: { flex: 1 },
+  scoreMainLabel: { fontSize: 22, fontWeight: '800', marginBottom: 6, letterSpacing: -0.3 },
+  scoreMainDesc: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19, marginBottom: 8 },
+  scoreSummaryText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
+    fontStyle: 'italic',
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.accent,
+    paddingLeft: 10,
+    marginTop: 4,
+  },
+
+  // Section score pills
+  sectionPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sectionPill: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    minWidth: 72,
+  },
+  sectionPillScore: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  sectionPillLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+
+  // Analysis rows (strengths / weaknesses)
+  analysisRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  analysisBullet: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  analysisRowText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.text,
+    lineHeight: 20,
+  },
+
+  // Improvement numbered badges
+  improvementBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    backgroundColor: COLORS.accentMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 1,
+    flexShrink: 0,
+  },
+  improvementBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.accent,
+  },
+
+  // Industry fit inside analysis card
+  industryFitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  industryFitName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  industryFitBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Skills chips
+  skillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  skillChip: {
+    backgroundColor: COLORS.accentDim,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.accentMuted,
+  },
+  skillChipText: { fontSize: 13, fontWeight: '500', color: COLORS.accent },
+
+  // Persistent profile score card (shown when no fresh analysis)
+  persistentScoreCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 18,
@@ -725,16 +1054,8 @@ const styles = StyleSheet.create({
   },
   progressBarFill: { height: '100%', borderRadius: 4 },
   industryReasoning: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 },
-  skillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  skillChip: {
-    backgroundColor: COLORS.accentDim,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: COLORS.accentMuted,
-  },
-  skillChipText: { fontSize: 13, fontWeight: '500', color: COLORS.accent },
+
+  // Quick actions
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
