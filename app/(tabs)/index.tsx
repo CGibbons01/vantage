@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -23,6 +24,7 @@ import {
   Bell,
   PenLine,
   Mail,
+  Star,
 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +52,16 @@ interface Profile {
   industry_fit?: IndustryFit;
   cv_filename?: string;
   updated_at?: string;
+}
+
+interface UploadResult {
+  cv_score?: number;
+  score?: number;
+  cv_text?: string;
+  text?: string;
+  extracted_text?: string;
+  feedback?: string;
+  suggestions?: string[];
 }
 
 function CircularScore({ score, size = 100 }: { score: number; size?: number }) {
@@ -91,6 +103,58 @@ function CircularScore({ score, size = 100 }: { score: number; size?: number }) 
   );
 }
 
+function ScoreRevealBanner({ score, feedback }: { score: number; feedback?: string }) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.88)).current;
+  const color = getScoreColor(score);
+  const label = score <= 40 ? 'Needs Work' : score <= 70 ? 'Good' : 'Excellent';
+  const desc = score <= 40
+    ? 'Your CV needs significant improvements to stand out.'
+    : score <= 70
+    ? 'Your CV is solid. A few tweaks could make it great.'
+    : 'Your CV is highly competitive. Keep it updated!';
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 80,
+        friction: 8,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, scaleAnim]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.scoreRevealCard,
+        { borderColor: color, opacity: fadeAnim, transform: [{ scale: scaleAnim }] },
+      ]}
+    >
+      <View style={styles.scoreRevealHeader}>
+        <View style={[styles.scoreRevealBadge, { backgroundColor: color + '22' }]}>
+          <Star size={14} color={color} />
+          <Text style={[styles.scoreRevealBadgeText, { color }]}>CV Analysed</Text>
+        </View>
+        <CheckCircle size={18} color={COLORS.success} />
+      </View>
+      <View style={styles.scoreRevealBody}>
+        <CircularScore score={score} size={96} />
+        <View style={styles.scoreRevealInfo}>
+          <Text style={[styles.scoreRevealLabel, { color }]}>{label}</Text>
+          <Text style={styles.scoreRevealDesc}>{feedback || desc}</Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -101,6 +165,7 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [freshScore, setFreshScore] = useState<UploadResult | null>(null);
   const [error, setError] = useState('');
 
   const fetchProfile = useCallback(async () => {
@@ -132,62 +197,109 @@ export default function DashboardScreen() {
   }, [fetchProfile]);
 
   const handleUploadCV = async () => {
-    console.log('[Dashboard] Opening document picker for CV upload');
+    console.log('[Dashboard] Upload CV button pressed');
+    let pickerResult: DocumentPicker.DocumentPickerResult | null = null;
     try {
-      const result = await DocumentPicker.getDocumentAsync({
+      pickerResult = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
         copyToCacheDirectory: true,
       });
+    } catch (e: any) {
+      const msg = e?.message || JSON.stringify(e) || 'Unknown picker error';
+      console.error('[Dashboard] Document picker error:', msg);
+      Alert.alert('Upload Failed', `Could not open file picker: ${msg}`);
+      return;
+    }
 
-      if (result.canceled) {
-        console.log('[Dashboard] CV upload cancelled');
-        return;
+    if (pickerResult.canceled) {
+      console.log('[Dashboard] CV upload cancelled by user');
+      return;
+    }
+
+    const asset = pickerResult.assets[0];
+    if (!asset) {
+      Alert.alert('Upload Failed', 'No file was selected.');
+      return;
+    }
+
+    console.log('[Dashboard] CV selected:', asset.name, 'uri:', asset.uri, 'size:', asset.size, 'mimeType:', asset.mimeType);
+
+    setUploading(true);
+    setUploadSuccess(false);
+    setFreshScore(null);
+
+    try {
+      const token = await getBearerToken();
+      if (!token) {
+        throw new Error('You are not signed in. Please sign in and try again.');
       }
 
-      const file = result.assets[0];
-      console.log('[Dashboard] CV selected:', file.name, 'size:', file.size);
-
-      setUploading(true);
-      setUploadSuccess(false);
-
-      const token = await getBearerToken();
       const formData = new FormData();
-      formData.append('cv', {
-        uri: file.uri,
-        name: file.name,
-        type: 'application/pdf',
-      } as any);
 
-      console.log('[Dashboard] Uploading CV to /api/profile/upload-cv');
-      const response = await fetch(`${BACKEND_URL}/api/profile/upload-cv`, {
+      // On web, fetch the file as a Blob and append it properly.
+      // On native, use the { uri, name, type } object pattern.
+      if (typeof document !== 'undefined') {
+        console.log('[Dashboard] Web environment: fetching file as Blob');
+        const blobResponse = await fetch(asset.uri);
+        if (!blobResponse.ok) {
+          throw new Error(`Could not read selected file (${blobResponse.status})`);
+        }
+        const blob = await blobResponse.blob();
+        const fileName = asset.name || 'cv.pdf';
+        formData.append('cv', blob, fileName);
+        console.log('[Dashboard] Appended Blob to FormData, size:', blob.size);
+      } else {
+        // Native environment (iOS / Android)
+        formData.append('cv', {
+          uri: asset.uri,
+          name: asset.name || 'cv.pdf',
+          type: asset.mimeType || 'application/pdf',
+        } as any);
+        console.log('[Dashboard] Appended native file object to FormData');
+      }
+
+      console.log('[Dashboard] POSTing CV to /api/cv/score');
+      const response = await fetch(`${BACKEND_URL}/api/cv/score`, {
         method: 'POST',
         headers: {
+          // Do NOT set Content-Type — let fetch set multipart/form-data with boundary automatically
           Authorization: `Bearer ${token}`,
-          // Do NOT set Content-Type here — fetch must set it automatically
-          // with the multipart boundary when using FormData
         },
         body: formData,
       });
 
+      console.log('[Dashboard] Upload response status:', response.status);
+
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`Upload failed: ${response.status} - ${text}`);
+        console.error('[Dashboard] Upload failed response body:', text);
+        throw new Error(`Server error ${response.status}: ${text.slice(0, 200)}`);
       }
 
-      const data = await response.json();
-      console.log('[Dashboard] CV upload successful, score:', data?.cv_score);
+      const data: UploadResult = await response.json();
+      const resolvedScore = data?.cv_score ?? data?.score ?? null;
+      console.log('[Dashboard] CV upload successful, score:', resolvedScore, 'full response:', JSON.stringify(data));
+
       setUploadSuccess(true);
+      if (resolvedScore != null) {
+        setFreshScore({ ...data, cv_score: resolvedScore });
+      }
 
       // Save CV text to AsyncStorage for AI job matching
-      if (data?.cv_text) {
-        await AsyncStorage.setItem(USER_CV_KEY, data.cv_text);
-        console.log('[Dashboard] Saved CV text to AsyncStorage for job matching');
+      const cvText = data?.cv_text || data?.text || data?.extracted_text || '';
+      if (cvText) {
+        await AsyncStorage.setItem(USER_CV_KEY, cvText);
+        console.log('[Dashboard] Saved CV text to AsyncStorage for job matching, length:', cvText.length);
+      } else {
+        console.log('[Dashboard] No CV text in response to save');
       }
 
+      // Refresh profile in background to update cv_filename and persistent score
       await fetchProfile();
     } catch (e: any) {
-      console.error('[Dashboard] CV upload error:', e);
-      Alert.alert('Upload Failed', e?.message || 'Could not upload your CV. Please try again.');
+      const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'Unknown error';
+      console.error('[Dashboard] CV upload error:', msg, e);
+      Alert.alert('Upload Failed', msg);
     } finally {
       setUploading(false);
     }
@@ -195,14 +307,17 @@ export default function DashboardScreen() {
 
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
   const topSkills = profile?.skills?.slice(0, 5) ?? [];
-  const scoreColor = profile?.cv_score != null ? getScoreColor(profile.cv_score) : COLORS.accent;
-  const scoreLabel = profile?.cv_score != null
-    ? profile.cv_score <= 40 ? 'Needs Work' : profile.cv_score <= 70 ? 'Good' : 'Excellent'
+
+  // Use freshScore for immediate display; fall back to profile score
+  const displayScore = freshScore?.cv_score ?? profile?.cv_score ?? null;
+  const scoreColor = displayScore != null ? getScoreColor(displayScore) : COLORS.accent;
+  const scoreLabel = displayScore != null
+    ? displayScore <= 40 ? 'Needs Work' : displayScore <= 70 ? 'Good' : 'Excellent'
     : '';
-  const scoreDesc = profile?.cv_score != null
-    ? profile.cv_score <= 40
+  const scoreDesc = displayScore != null
+    ? displayScore <= 40
       ? 'Your CV needs significant improvements to stand out.'
-      : profile.cv_score <= 70
+      : displayScore <= 70
       ? 'Your CV is solid. A few tweaks could make it great.'
       : 'Your CV is highly competitive. Keep it updated!'
     : '';
@@ -277,7 +392,10 @@ export default function DashboardScreen() {
             disabled={uploading}
           >
             {uploading ? (
-              <ActivityIndicator color="#000" size="small" />
+              <>
+                <ActivityIndicator color="#000" size="small" />
+                <Text style={styles.uploadBtnText}>Analysing CV…</Text>
+              </>
             ) : (
               <>
                 <Upload size={18} color="#000" />
@@ -285,7 +403,7 @@ export default function DashboardScreen() {
               </>
             )}
           </AnimatedPressable>
-          {uploadSuccess && (
+          {uploadSuccess && !freshScore && (
             <View style={styles.successRow}>
               <CheckCircle size={16} color={COLORS.success} />
               <Text style={styles.successText}>CV uploaded successfully!</Text>
@@ -312,12 +430,20 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* CV Score Card */}
-      {profile?.cv_score != null && (
+      {/* Immediate Score Reveal after upload */}
+      {freshScore?.cv_score != null && (
+        <ScoreRevealBanner
+          score={freshScore.cv_score}
+          feedback={freshScore.feedback}
+        />
+      )}
+
+      {/* CV Score Card (from profile — shown when no fresh score or after refresh) */}
+      {displayScore != null && !freshScore && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>CV Score</Text>
           <View style={styles.scoreRow}>
-            <CircularScore score={profile.cv_score} size={100} />
+            <CircularScore score={displayScore} size={100} />
             <View style={styles.scoreInfo}>
               <Text style={[styles.scoreLabel, { color: scoreColor }]}>{scoreLabel}</Text>
               <Text style={styles.scoreDesc}>{scoreDesc}</Text>
@@ -506,8 +632,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 24,
     paddingVertical: 14,
+    minWidth: 160,
+    justifyContent: 'center',
   },
-  uploadBtnDisabled: { opacity: 0.6 },
+  uploadBtnDisabled: { opacity: 0.7 },
   uploadBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
   successRow: {
     flexDirection: 'row',
@@ -537,6 +665,35 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
   },
   reuploadText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
+  // Score reveal banner (animated, shown immediately after upload)
+  scoreRevealCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 2,
+    boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+  },
+  scoreRevealHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  scoreRevealBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  scoreRevealBadgeText: { fontSize: 12, fontWeight: '700' },
+  scoreRevealBody: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  scoreRevealInfo: { flex: 1 },
+  scoreRevealLabel: { fontSize: 20, fontWeight: '800', marginBottom: 6 },
+  scoreRevealDesc: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+  // Persistent score card
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
