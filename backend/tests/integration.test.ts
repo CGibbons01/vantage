@@ -43,7 +43,7 @@ describe("API Integration Tests", () => {
 
   test("Upload CV", async () => {
     const form = new FormData();
-    form.append("file", createTestFile("resume.pdf", "Sample CV content", "application/pdf"));
+    form.append("cv", createTestFile("resume.pdf", "Sample CV content", "application/pdf"));
     const res = await authenticatedApi("/api/profile/upload-cv", authToken, {
       method: "POST",
       body: form,
@@ -144,6 +144,157 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 404);
   });
 
+  // CV Generation AI endpoint
+  test("Generate CV", async () => {
+    const res = await authenticatedApi("/api/cv/generate", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "John Doe",
+        email: "john@example.com",
+        target_role: "Senior Software Engineer",
+        summary: "Experienced full-stack developer with 5 years of experience",
+        skills: ["JavaScript", "TypeScript", "React", "Node.js"],
+        experience: [
+          {
+            company: "Tech Corp",
+            role: "Software Developer",
+            duration: "2020-2023",
+            description: "Developed and maintained web applications using React and Node.js",
+          },
+        ],
+        education: [
+          {
+            institution: "State University",
+            degree: "BS Computer Science",
+            year: "2020",
+          },
+        ],
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.cv_text).toBeDefined();
+    expect(data.sections).toBeDefined();
+  });
+
+  test("Generate CV - missing required field", async () => {
+    const res = await authenticatedApi("/api/cv/generate", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "John Doe",
+        email: "john@example.com",
+        // missing required: target_role, summary, skills, experience, education
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  // CV Improvement AI endpoint
+  test("Improve CV", async () => {
+    const res = await authenticatedApi("/api/cv/improve", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "John Doe\nSoftware Developer\nTech Corp (2020-2023)\nSkills: JavaScript, TypeScript, React",
+        target_role: "Senior Software Engineer",
+        focus_areas: ["keywords", "impact_statements"],
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.improved_cv_text).toBeDefined();
+    expect(data.suggestions).toBeDefined();
+  });
+
+  test("Improve CV - missing required field", async () => {
+    const res = await authenticatedApi("/api/cv/improve", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "Sample CV text",
+        // missing required: target_role
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  // Cover Letter Generation AI endpoint
+  test("Generate cover letter", async () => {
+    const res = await authenticatedApi("/api/cover-letter/generate", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        applicant_name: "John Doe",
+        job_title: "Senior Software Engineer",
+        company_name: "Tech Corp",
+        job_description: "We are seeking a senior engineer with 5+ years of experience in full-stack development",
+        cv_summary: "Experienced full-stack developer with 5 years in software development",
+        tone: "professional",
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.cover_letter).toBeDefined();
+    expect(data.word_count).toBeDefined();
+  });
+
+  test("Generate cover letter - missing required field", async () => {
+    const res = await authenticatedApi("/api/cover-letter/generate", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        applicant_name: "John Doe",
+        job_title: "Senior Developer",
+        // missing required: company_name, job_description, cv_summary
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  // Job Matching AI endpoint
+  test("Match jobs to CV", async () => {
+    const res = await authenticatedApi("/api/jobs/match", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js",
+        jobs: [
+          {
+            id: "job1",
+            title: "Frontend Developer",
+            description: "Looking for React developer with 3+ years experience",
+            company: "Tech Corp",
+            required_skills: ["React", "JavaScript"],
+          },
+          {
+            id: "job2",
+            title: "Backend Developer",
+            description: "Looking for Node.js developer with 5+ years experience",
+            company: "Another Corp",
+            required_skills: ["Node.js", "TypeScript"],
+          },
+        ],
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.matches).toBeDefined();
+  });
+
+  test("Match jobs to CV - missing required field", async () => {
+    const res = await authenticatedApi("/api/jobs/match", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "John Doe",
+        // missing required: jobs
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
   // Unauthenticated access tests
   test("Get profile without auth", async () => {
     const res = await api("/api/profile");
@@ -157,6 +308,62 @@ describe("API Integration Tests", () => {
 
   test("List applications without auth", async () => {
     const res = await api("/api/applications");
+    await expectStatus(res, 401);
+  });
+
+  test("Generate CV without auth", async () => {
+    const res = await api("/api/cv/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "John Doe",
+        email: "john@example.com",
+        target_role: "Developer",
+        summary: "Test",
+        skills: ["Test"],
+        experience: [{ company: "Test", role: "Dev", duration: "1 year", description: "Test" }],
+        education: [{ institution: "Test", degree: "BS", year: "2020" }],
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Improve CV without auth", async () => {
+    const res = await api("/api/cv/improve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "Sample CV",
+        target_role: "Developer",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Generate cover letter without auth", async () => {
+    const res = await api("/api/cover-letter/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        applicant_name: "John Doe",
+        job_title: "Developer",
+        company_name: "Tech Corp",
+        job_description: "Job posting",
+        cv_summary: "CV summary",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Match jobs without auth", async () => {
+    const res = await api("/api/jobs/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "Sample CV",
+        jobs: [{ id: "1", title: "Job", description: "Desc", company: "Corp" }],
+      }),
+    });
     await expectStatus(res, 401);
   });
 });

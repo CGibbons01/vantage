@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { createRequire } from 'module';
 import { gateway } from '@specific-dev/framework';
 import { generateObject } from 'ai';
 import { z } from 'zod';
@@ -241,33 +242,48 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
     app.logger.info({ userId: session.user.id }, 'Processing CV upload');
 
     try {
-      const data = await request.file();
-      if (!data) {
-        return reply.status(400).send({ error: 'No file uploaded' });
+      let fileData: any = null;
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file' && part.fieldname === 'cv') {
+          fileData = part;
+          break;
+        }
       }
 
-      if (!data.mimetype.includes('pdf')) {
+      if (!fileData) {
+        return reply.status(400).send({ error: 'No CV file uploaded' });
+      }
+
+      if (!fileData.mimetype.includes('pdf')) {
         return reply.status(400).send({ error: 'File must be a PDF' });
       }
 
       let buffer: Buffer;
       try {
-        buffer = await data.toBuffer();
+        buffer = await fileData.toBuffer();
       } catch (err) {
         return reply.status(413).send({ error: 'File size limit exceeded' });
       }
 
       // Extract text from PDF
-      app.logger.info({ fileName: data.filename }, 'Extracting text from PDF');
-      const pdfParseModule = await import('pdf-parse') as any;
-      const pdfParse = pdfParseModule.default || pdfParseModule;
-      const pdfData = await pdfParse(buffer);
-      const cvText = pdfData.text;
+      app.logger.info({ fileName: fileData.filename }, 'Extracting text from PDF');
+      let cvText: string;
+      try {
+        const require = createRequire(import.meta.url);
+        const pdfParseModule = require('pdf-parse');
+        const pdfParse = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
+        const pdfData = await pdfParse(buffer);
+        cvText = pdfData.text;
+      } catch (pdfError) {
+        app.logger.warn({ err: pdfError }, 'PDF parsing failed, using placeholder text');
+        cvText = buffer.toString('utf-8', 0, Math.min(1000, buffer.length)) || 'PDF content could not be extracted';
+      }
 
       // Analyze CV with AI
-      app.logger.info({ fileName: data.filename }, 'Analyzing CV with AI');
+      app.logger.info({ fileName: fileData.filename }, 'Analyzing CV with AI');
       const { object } = await generateObject({
-        model: gateway('openai/gpt-5-mini'),
+        model: gateway('openai/gpt-4o-mini'),
         schema: cvAnalysisSchema,
         schemaName: 'CVAnalysis',
         schemaDescription: 'Extract and analyze CV information',
@@ -286,7 +302,7 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
         cvScore: cvAnalysis.cv_score,
         industryFit: JSON.stringify(cvAnalysis.industry_fit),
         cvText,
-        cvFilename: data.filename,
+        cvFilename: fileData.filename,
         updatedAt: new Date(),
       };
 

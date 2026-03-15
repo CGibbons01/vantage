@@ -4,6 +4,7 @@ import * as authSchema from './db/schema/auth-schema.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerApplicationRoutes } from './routes/applications.js';
+import { registerAIRoutes } from './routes/ai.js';
 
 // Set Adzuna credentials if not already set
 process.env.ADZUNA_APP_ID = process.env.ADZUNA_APP_ID || '98619faa';
@@ -25,6 +26,7 @@ app.withAuth();
 registerProfileRoutes(app, app.fastify);
 registerJobRoutes(app, app.fastify);
 registerApplicationRoutes(app, app.fastify);
+registerAIRoutes(app, app.fastify);
 
 await app.run();
 app.logger.info('Application running');
