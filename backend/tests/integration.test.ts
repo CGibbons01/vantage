@@ -8,6 +8,7 @@ process.env.ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY || "2899cb384058f7a2a293
 describe("API Integration Tests", () => {
   let authToken: string;
   let applicationId: string;
+  let jobId: string = "";
 
   test("Sign up test user", async () => {
     const { token, user } = await signUpTestUser();
@@ -59,6 +60,20 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 200);
     const data = await res.json();
     expect(data.jobs).toBeDefined();
+    // Extract first job ID if available for use in subsequent tests
+    if (data.jobs && data.jobs.length > 0) {
+      jobId = data.jobs[0].id;
+    }
+  });
+
+  test("Get job detail", async () => {
+    // Only test if we have a real job ID from search results
+    if (jobId) {
+      const res = await authenticatedApi(`/api/jobs/${jobId}`, authToken);
+      await expectStatus(res, 200);
+      const data = await res.json();
+      expect(data.id).toBeDefined();
+    }
   });
 
   test("Get job detail - not found", async () => {
@@ -220,6 +235,30 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 400);
   });
 
+  // CV Scoring AI endpoint
+  test("Score CV", async () => {
+    const res = await authenticatedApi("/api/cv/score", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js\nExperience: 5 years",
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.score).toBeDefined();
+    expect(data.industry_fit).toBeDefined();
+  });
+
+  test("Score CV - missing required field", async () => {
+    const res = await authenticatedApi("/api/cv/score", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    await expectStatus(res, 400);
+  });
+
   // Cover Letter Generation AI endpoint
   test("Generate cover letter", async () => {
     const res = await authenticatedApi("/api/cover-letter/generate", authToken, {
@@ -308,6 +347,17 @@ describe("API Integration Tests", () => {
 
   test("List applications without auth", async () => {
     const res = await api("/api/applications");
+    await expectStatus(res, 401);
+  });
+
+  test("Score CV without auth", async () => {
+    const res = await api("/api/cv/score", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cv_text: "Sample CV",
+      }),
+    });
     await expectStatus(res, 401);
   });
 
