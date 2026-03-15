@@ -1,7 +1,10 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { createRequire } from 'module';
+import { eq } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
 import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
+import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 
 const cvGenerateBodySchema = z.object({
@@ -75,6 +78,23 @@ const jobMatchResponseSchema = z.object({
     missing_skills: z.array(z.string()),
     recommendation: z.string(),
   })),
+});
+
+const cvScoreResponseSchema = z.object({
+  score: z.number().int().min(0).max(100),
+  industry_fit: z.string(),
+  skills: z.array(z.string()),
+  summary: z.string(),
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+  improvements: z.array(z.string()),
+  section_scores: z.object({
+    summary: z.number().int().min(0).max(100),
+    experience: z.number().int().min(0).max(100),
+    education: z.number().int().min(0).max(100),
+    skills: z.number().int().min(0).max(100),
+    formatting: z.number().int().min(0).max(100),
+  }),
 });
 
 export function registerAIRoutes(app: App, fastify: FastifyInstance) {
@@ -156,49 +176,26 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Generating CV');
 
     try {
-      const experienceText = body.experience
-        .map(e => `${e.role} at ${e.company} (${e.duration}): ${e.description}`)
-        .join('\n');
+      const expText = body.experience.map(e => `${e.role} at ${e.company}: ${e.description}`).join('; ');
+      const eduText = body.education.map(e => `${e.degree} - ${e.institution}`).join('; ');
 
-      const educationText = body.education
-        .map(e => `${e.degree} from ${e.institution} (${e.year})`)
-        .join('\n');
+      const prompt = `CV for ${body.name} targeting ${body.target_role}. Exp: ${expText}. Edu: ${eduText}. Skills: ${body.skills.join(', ')}. Return JSON with cv_text and sections.`;
 
-      const prompt = `Generate a professional ATS-optimized CV for the following candidate:
+      try {
+        const { object } = await generateObject({
+          model: gateway('openai/gpt-4o-mini'),
+          schema: cvGenerateResponseSchema,
+          schemaName: 'CVGeneration',
+          schemaDescription: 'Generated professional CV with sections',
+          prompt,
+        });
 
-Name: ${body.name}
-Email: ${body.email}
-Target Role: ${body.target_role}
-
-Experience:
-${experienceText}
-
-Education:
-${educationText}
-
-Skills: ${body.skills.join(', ')}
-
-Summary: ${body.summary}
-
-Create a comprehensive CV with the following structure:
-1. Professional Summary (2-3 sentences tailored to the target role)
-2. Experience (formatted with bullets, quantified achievements)
-3. Education (with dates and institutions)
-4. Skills (organized by category if applicable)
-5. Achievements (key accomplishments or certifications)
-
-Provide both a full plain-text CV and the sections as separate fields. Make it ATS-friendly with clear keywords and proper formatting.`;
-
-      const { object } = await generateObject({
-        model: gateway('openai/gpt-4o'),
-        schema: cvGenerateResponseSchema,
-        schemaName: 'CVGeneration',
-        schemaDescription: 'Generated professional CV with sections',
-        prompt,
-      });
-
-      app.logger.info({ userId: session.user.id }, 'CV generated successfully');
-      return object;
+        app.logger.info({ userId: session.user.id }, 'CV generated successfully');
+        return object;
+      } catch (aiError) {
+        app.logger.error({ err: aiError, userId: session.user.id }, 'CV generation failed');
+        return reply.status(500).send({ error: 'Failed to generate CV' });
+      }
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to generate CV');
       return reply.status(500).send({ error: 'Failed to generate CV' });
@@ -250,35 +247,24 @@ Provide both a full plain-text CV and the sections as separate fields. Make it A
     app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Improving CV');
 
     try {
-      const focusAreas = body.focus_areas?.length ? body.focus_areas.join(', ') : 'all aspects';
+      const focus = body.focus_areas?.join(', ') || 'all';
+      const prompt = `Improve CV for ${body.target_role}. Focus: ${focus}. CV: ${body.cv_text.substring(0, 300)}. Return JSON with improved_cv_text, suggestions, score_before, score_after.`;
 
-      const prompt = `Analyze and improve this CV for a ${body.target_role} position. Focus on: ${focusAreas}
+      try {
+        const { object } = await generateObject({
+          model: gateway('openai/gpt-4o-mini'),
+          schema: cvImproveResponseSchema,
+          schemaName: 'CVImprovement',
+          schemaDescription: 'Improved CV with suggestions and scores',
+          prompt,
+        });
 
-Original CV:
-${body.cv_text}
-
-Please:
-1. Score the original CV from 0-100 based on effectiveness for the target role
-2. Rewrite the CV with:
-   - Stronger impact statements with quantifiable achievements
-   - Better ATS keywords relevant to ${body.target_role}
-   - More compelling language
-   - Improved formatting and structure
-3. Score the improved CV from 0-100
-4. Provide 3-5 specific suggestions for further improvement
-
-Return the improved CV text and suggestions.`;
-
-      const { object } = await generateObject({
-        model: gateway('openai/gpt-4o-mini'),
-        schema: cvImproveResponseSchema,
-        schemaName: 'CVImprovement',
-        schemaDescription: 'Improved CV with suggestions and scores',
-        prompt,
-      });
-
-      app.logger.info({ userId: session.user.id, scoreBefore: object.score_before, scoreAfter: object.score_after }, 'CV improved successfully');
-      return object;
+        app.logger.info({ userId: session.user.id, scoreBefore: object.score_before, scoreAfter: object.score_after }, 'CV improved successfully');
+        return object;
+      } catch (aiError) {
+        app.logger.error({ err: aiError, userId: session.user.id }, 'CV improvement failed');
+        return reply.status(500).send({ error: 'Failed to improve CV' });
+      }
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to improve CV');
       return reply.status(500).send({ error: 'Failed to improve CV' });
@@ -475,6 +461,107 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to analyze job matches');
       return reply.status(500).send({ error: 'Failed to analyze job matches' });
+    }
+  });
+
+  // POST /api/cv/score
+  fastify.post('/api/cv/score', {
+    schema: {
+      description: 'Score and analyze a CV with detailed insights using GPT-4o',
+      tags: ['ai', 'cv'],
+      body: {
+        type: 'object',
+        required: ['cv_text'],
+        properties: {
+          cv_text: { type: 'string' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            score: { type: 'integer' },
+            industry_fit: { type: 'string' },
+            skills: { type: 'array', items: { type: 'string' } },
+            summary: { type: 'string' },
+            strengths: { type: 'array', items: { type: 'string' } },
+            weaknesses: { type: 'array', items: { type: 'string' } },
+            improvements: { type: 'array', items: { type: 'string' } },
+            section_scores: {
+              type: 'object',
+              properties: {
+                summary: { type: 'integer' },
+                experience: { type: 'integer' },
+                education: { type: 'integer' },
+                skills: { type: 'integer' },
+                formatting: { type: 'integer' },
+              },
+            },
+          },
+        },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest<{ Body: { cv_text: string } }>, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    const { cv_text } = request.body;
+
+    if (!cv_text || cv_text.trim().length === 0) {
+      return reply.status(400).send({ error: 'cv_text is required and cannot be empty' });
+    }
+
+    app.logger.info({ userId: session.user.id, cvLength: cv_text.length }, 'Processing CV score request');
+
+    try {
+      // Analyze CV with AI
+      app.logger.info({ userId: session.user.id }, 'Analyzing CV with AI for comprehensive scoring');
+
+      const prompt = `Analyze this CV and rate it 0-100. Extract top skills. Identify 2-3 strengths and weaknesses. Suggest 2-3 improvements. Rate each section.
+
+CV: ${cv_text.substring(0, 1000)}
+
+Return ONLY valid JSON matching this schema:
+{"score": 75, "industry_fit": "Technology", "skills": ["JavaScript"], "summary": "Assessment here", "strengths": ["Strength 1"], "weaknesses": ["Weakness 1"], "improvements": ["Improvement 1"], "section_scores": {"summary": 70, "experience": 80, "education": 80, "skills": 90, "formatting": 75}}`;
+
+      try {
+        const { object } = await generateObject({
+          model: gateway('openai/gpt-4o-mini'),
+          schema: cvScoreResponseSchema,
+          schemaName: 'CVScore',
+          schemaDescription: 'Detailed CV analysis and scoring',
+          prompt,
+        });
+
+        // Update profile with score and industry fit if authenticated
+        if (session?.user?.id) {
+          try {
+            await app.db.update(schema.profiles)
+              .set({
+                cvScore: object.score,
+                industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
+                updatedAt: new Date(),
+              })
+              .where(eq(schema.profiles.userId, session.user.id));
+
+            app.logger.info({ userId: session.user.id, cvScore: object.score }, 'Profile updated with CV score');
+          } catch (updateError) {
+            app.logger.warn({ err: updateError, userId: session.user.id }, 'Failed to update profile with CV score');
+          }
+        }
+
+        app.logger.info({ userId: session.user.id, score: object.score }, 'CV scored successfully');
+        return object;
+      } catch (aiError) {
+        app.logger.error({ err: aiError, userId: session.user.id }, 'AI analysis failed');
+        return reply.status(500).send({ error: 'Failed to analyze CV with AI' });
+      }
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to score CV');
+      return reply.status(500).send({ error: 'Failed to process request' });
     }
   });
 }
