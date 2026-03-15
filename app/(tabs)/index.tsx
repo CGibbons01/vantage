@@ -3,13 +3,12 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
   Alert,
-  Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -21,12 +20,17 @@ import {
   TrendingUp,
   CheckCircle,
   AlertCircle,
+  Bell,
+  PenLine,
+  Mail,
 } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticatedGet, getBearerToken, BACKEND_URL } from '@/utils/api';
 import { COLORS, getScoreColor } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
+
+const USER_CV_KEY = 'user_cv_text';
 
 interface IndustryFit {
   industry: string;
@@ -50,11 +54,6 @@ interface Profile {
 
 function CircularScore({ score, size = 100 }: { score: number; size?: number }) {
   const color = getScoreColor(score);
-  const radius = (size - 12) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const progress = (score / 100) * circumference;
-  const strokeDashoffset = circumference - progress;
-
   return (
     <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
       <View
@@ -177,6 +176,13 @@ export default function DashboardScreen() {
       const data = await response.json();
       console.log('[Dashboard] CV upload successful, score:', data?.cv_score);
       setUploadSuccess(true);
+
+      // Save CV text to AsyncStorage for AI job matching
+      if (data?.cv_text) {
+        await AsyncStorage.setItem(USER_CV_KEY, data.cv_text);
+        console.log('[Dashboard] Saved CV text to AsyncStorage for job matching');
+      }
+
       await fetchProfile();
     } catch (e: any) {
       console.error('[Dashboard] CV upload error:', e);
@@ -189,6 +195,16 @@ export default function DashboardScreen() {
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
   const topSkills = profile?.skills?.slice(0, 5) ?? [];
   const scoreColor = profile?.cv_score != null ? getScoreColor(profile.cv_score) : COLORS.accent;
+  const scoreLabel = profile?.cv_score != null
+    ? profile.cv_score <= 40 ? 'Needs Work' : profile.cv_score <= 70 ? 'Good' : 'Excellent'
+    : '';
+  const scoreDesc = profile?.cv_score != null
+    ? profile.cv_score <= 40
+      ? 'Your CV needs significant improvements to stand out.'
+      : profile.cv_score <= 70
+      ? 'Your CV is solid. A few tweaks could make it great.'
+      : 'Your CV is highly competitive. Keep it updated!'
+    : '';
 
   if (loading) {
     return (
@@ -214,14 +230,26 @@ export default function DashboardScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerLeft}>
           <Text style={styles.greeting}>Good day, {firstName}</Text>
           <Text style={styles.headerTitle}>Vantage AI</Text>
         </View>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>
-            {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
-          </Text>
+        <View style={styles.headerRight}>
+          <AnimatedPressable
+            style={styles.bellBtn}
+            onPress={() => {
+              console.log('[Dashboard] Navigate to notifications');
+              router.push('/notifications' as any);
+            }}
+            accessibilityLabel="Job alerts"
+          >
+            <Bell size={20} color={COLORS.textSecondary} />
+          </AnimatedPressable>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>
+              {(user?.name?.[0] || user?.email?.[0] || 'U').toUpperCase()}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -290,16 +318,8 @@ export default function DashboardScreen() {
           <View style={styles.scoreRow}>
             <CircularScore score={profile.cv_score} size={100} />
             <View style={styles.scoreInfo}>
-              <Text style={[styles.scoreLabel, { color: scoreColor }]}>
-                {profile.cv_score <= 40 ? 'Needs Work' : profile.cv_score <= 70 ? 'Good' : 'Excellent'}
-              </Text>
-              <Text style={styles.scoreDesc}>
-                {profile.cv_score <= 40
-                  ? 'Your CV needs significant improvements to stand out.'
-                  : profile.cv_score <= 70
-                  ? 'Your CV is solid. A few tweaks could make it great.'
-                  : 'Your CV is highly competitive. Keep it updated!'}
-              </Text>
+              <Text style={[styles.scoreLabel, { color: scoreColor }]}>{scoreLabel}</Text>
+              <Text style={styles.scoreDesc}>{scoreDesc}</Text>
             </View>
           </View>
         </View>
@@ -361,6 +381,30 @@ export default function DashboardScreen() {
         </AnimatedPressable>
         <AnimatedPressable
           style={styles.quickActionBtn}
+          onPress={() => { console.log('[Dashboard] Navigate to CV Writer'); router.push('/(tabs)/cv-writer'); }}
+        >
+          <PenLine size={22} color={COLORS.accent} />
+          <Text style={styles.quickActionText}>AI CV Writer</Text>
+        </AnimatedPressable>
+        <AnimatedPressable
+          style={styles.quickActionBtn}
+          onPress={() => { console.log('[Dashboard] Navigate to Cover Letter'); router.push('/(tabs)/cover-letter'); }}
+        >
+          <Mail size={22} color={COLORS.accent} />
+          <Text style={styles.quickActionText}>Cover Letter</Text>
+        </AnimatedPressable>
+      </View>
+
+      <View style={[styles.quickActions, { marginTop: 10 }]}>
+        <AnimatedPressable
+          style={styles.quickActionBtn}
+          onPress={() => { console.log('[Dashboard] Navigate to Applications'); router.push('/(tabs)/applications'); }}
+        >
+          <List size={22} color={COLORS.accent} />
+          <Text style={styles.quickActionText}>Applications</Text>
+        </AnimatedPressable>
+        <AnimatedPressable
+          style={styles.quickActionBtn}
           onPress={() => { console.log('[Dashboard] Navigate to Profile'); router.push('/(tabs)/profile'); }}
         >
           <User size={22} color={COLORS.accent} />
@@ -368,10 +412,10 @@ export default function DashboardScreen() {
         </AnimatedPressable>
         <AnimatedPressable
           style={styles.quickActionBtn}
-          onPress={() => { console.log('[Dashboard] Navigate to Applications'); router.push('/(tabs)/applications'); }}
+          onPress={() => { console.log('[Dashboard] Navigate to Notifications'); router.push('/notifications' as any); }}
         >
-          <List size={22} color={COLORS.accent} />
-          <Text style={styles.quickActionText}>My Applications</Text>
+          <Bell size={22} color={COLORS.accent} />
+          <Text style={styles.quickActionText}>Job Alerts</Text>
         </AnimatedPressable>
       </View>
     </ScrollView>
@@ -388,8 +432,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
+  headerLeft: { flex: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   greeting: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 2 },
   headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   avatarCircle: {
     width: 44,
     height: 44,

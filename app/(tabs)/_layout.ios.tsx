@@ -6,8 +6,9 @@ import FloatingTabBar from "@/components/FloatingTabBar";
 const TABS = [
   { name: "index", route: "/(tabs)/", icon: "home" as const, label: "Dashboard" },
   { name: "jobs", route: "/(tabs)/jobs", icon: "work" as const, label: "Jobs" },
+  { name: "cv-writer", route: "/(tabs)/cv-writer", icon: "description" as const, label: "CV Writer" },
+  { name: "cover-letter", route: "/(tabs)/cover-letter", icon: "mail" as const, label: "Cover Letter" },
   { name: "applications", route: "/(tabs)/applications", icon: "list" as const, label: "Applications" },
-  { name: "profile", route: "/(tabs)/profile", icon: "person" as const, label: "Profile" },
 ];
 
 export default function TabLayout() {
@@ -18,10 +19,13 @@ export default function TabLayout() {
       >
         <Tabs.Screen name="index" />
         <Tabs.Screen name="jobs" />
+        <Tabs.Screen name="cv-writer" />
+        <Tabs.Screen name="cover-letter" />
         <Tabs.Screen name="applications" />
-        <Tabs.Screen name="profile" />
+        <Tabs.Screen name="notifications" options={{ href: null }} />
+        <Tabs.Screen name="profile" options={{ href: null }} />
       </Tabs>
-      <FloatingTabBar tabs={TABS} containerWidth={340} />
+      <FloatingTabBar tabs={TABS} containerWidth={380} />
     </View>
   );
 }

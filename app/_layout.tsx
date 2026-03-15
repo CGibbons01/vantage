@@ -18,6 +18,7 @@ import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { SubscriptionProvider, useSubscription } from "@/contexts/SubscriptionContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import { isOnboardingComplete } from "@/utils/onboardingStorage";
 
 SplashScreen.preventAutoHideAsync();
@@ -124,46 +125,58 @@ export default function RootLayout() {
   return (
     <AuthProvider>
       <SubscriptionProvider>
+        <NotificationProvider>
           <SubscriptionRedirect />
-        <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
-          <SafeAreaProvider>
-            <WidgetProvider>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <StatusBar style="light" animated />
-                <AuthGuard />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
-                  <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-                  <Stack.Screen
-                    name="job/[id]"
-                    options={{
-                      headerShown: true,
-                      headerTitle: "Job Details",
-                      headerBackButtonDisplayMode: "minimal",
-                      headerStyle: { backgroundColor: "#0F172A" },
-                      headerTintColor: "#F8FAFC",
-                    }}
-                  />
-                  <Stack.Screen
-                    name="profile/edit"
-                    options={{
-                      headerShown: true,
-                      headerTitle: "Edit Profile",
-                      headerBackButtonDisplayMode: "minimal",
-                      headerStyle: { backgroundColor: "#0F172A" },
-                      headerTintColor: "#F8FAFC",
-                    }}
-                  />
-                </Stack>
-                <SystemBars style="light" />
-              </GestureHandlerRootView>
-            </WidgetProvider>
-          </SafeAreaProvider>
-        </ThemeProvider>
+          <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
+            <SafeAreaProvider>
+              <WidgetProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <StatusBar style="light" animated />
+                  <AuthGuard />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                    <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
+                    <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                    <Stack.Screen
+                      name="notifications"
+                      options={{
+                        headerShown: true,
+                        headerTitle: "Job Alerts",
+                        headerBackButtonDisplayMode: "minimal",
+                        headerStyle: { backgroundColor: "#0F172A" },
+                        headerTintColor: "#F8FAFC",
+                      }}
+                    />
+                    <Stack.Screen
+                      name="job/[id]"
+                      options={{
+                        headerShown: true,
+                        headerTitle: "Job Details",
+                        headerBackButtonDisplayMode: "minimal",
+                        headerStyle: { backgroundColor: "#0F172A" },
+                        headerTintColor: "#F8FAFC",
+                      }}
+                    />
+                    <Stack.Screen
+                      name="profile/edit"
+                      options={{
+                        headerShown: true,
+                        headerTitle: "Edit Profile",
+                        headerBackButtonDisplayMode: "minimal",
+                        headerStyle: { backgroundColor: "#0F172A" },
+                        headerTintColor: "#F8FAFC",
+                      }}
+                    />
+                  </Stack>
+                  <SystemBars style="light" />
+                </GestureHandlerRootView>
+              </WidgetProvider>
+            </SafeAreaProvider>
+          </ThemeProvider>
+        </NotificationProvider>
       </SubscriptionProvider>
     </AuthProvider>
   );
