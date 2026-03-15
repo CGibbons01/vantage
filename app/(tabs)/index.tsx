@@ -163,7 +163,8 @@ export default function DashboardScreen() {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
+          // Do NOT set Content-Type here — fetch must set it automatically
+          // with the multipart boundary when using FormData
         },
         body: formData,
       });

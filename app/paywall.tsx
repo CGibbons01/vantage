@@ -30,24 +30,24 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 // Premium features for the paywall
 const FEATURES = [
   {
-    icon: "⭐",
-    title: "Premium Feature 1",
-    description: "Description of your first premium feature",
+    icon: "📄",
+    title: "AI CV Writer",
+    description: "Generate & improve your CV with AI, tailored for ATS systems",
   },
   {
-    icon: "⚡",
-    title: "Premium Feature 2",
-    description: "Description of your second premium feature",
+    icon: "✉️",
+    title: "AI Cover Letter",
+    description: "Create tailored cover letters for any job in seconds",
   },
   {
-    icon: "🛡️",
-    title: "Premium Feature 3",
-    description: "Description of your third premium feature",
+    icon: "🔔",
+    title: "Advanced Job Alerts",
+    description: "Smart notifications for matching roles, interview reminders & salary insights",
   },
   {
-    icon: "☁️",
-    title: "Premium Feature 4",
-    description: "Description of your fourth premium feature",
+    icon: "📊",
+    title: "Enhanced Job Matching",
+    description: "See your exact match % for every role with skill gap analysis",
   },
 ];
 
