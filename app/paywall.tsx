@@ -51,11 +51,14 @@ const FEATURES = [
   },
 ];
 
-// Customize: Your app's colors
+// App colour palette
 const colors = {
-  primary: "#007AFF",
-  success: "#34C759",
-  warning: "#FF9500",
+  bg: "#0F2B5B",
+  surface: "#1A3A6B",
+  accent: "#F59E0B",
+  text: "#FFFFFF",
+  textSecondary: "#94A3B8",
+  border: "#1E3A5F",
 };
 
 export default function PaywallScreen() {
@@ -166,7 +169,7 @@ export default function PaywallScreen() {
     return (
       <View style={styles.subscribedContainer}>
         <LinearGradient
-          colors={["#667EEA", "#764BA2", "#f093fb"]}
+          colors={["#0F2B5B", "#1A3A6B", "#0F2B5B"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.subscribedGradient}
@@ -226,12 +229,12 @@ export default function PaywallScreen() {
     );
   }
 
-  // Feature icon background colors (rotating by index)
+  // Feature icon background colors (amber tint for all)
   const featureIconColors = [
-    "rgba(255, 215, 0, 0.25)",   // Gold
-    "rgba(76, 217, 100, 0.25)",  // Green
-    "rgba(255, 149, 0, 0.25)",   // Orange
-    "rgba(90, 200, 250, 0.25)",  // Blue
+    "rgba(245, 158, 11, 0.2)",
+    "rgba(245, 158, 11, 0.2)",
+    "rgba(245, 158, 11, 0.2)",
+    "rgba(245, 158, 11, 0.2)",
   ];
 
   // Loading state
@@ -239,7 +242,7 @@ export default function PaywallScreen() {
     return (
       <View style={styles.container}>
         <LinearGradient
-          colors={["#667EEA", "#764BA2", "#f093fb"]}
+          colors={["#0F2B5B", "#1A3A6B", "#0F2B5B"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.gradientBackground}
@@ -263,7 +266,7 @@ export default function PaywallScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#667EEA", "#764BA2", "#f093fb"]}
+        colors={["#0F2B5B", "#1A3A6B", "#0F2B5B"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradientBackground}
@@ -390,7 +393,7 @@ export default function PaywallScreen() {
                   disabled={!selectedPackage || webMockState === "processing"}
                 >
                   {webMockState === "processing" ? (
-                    <ActivityIndicator color="#764BA2" />
+                    <ActivityIndicator color="#0F2B5B" />
                   ) : (
                     <Text style={styles.primaryButtonText}>
                       {selectedPackage
@@ -430,7 +433,7 @@ export default function PaywallScreen() {
                   disabled={!selectedPackage || purchasing}
                 >
                   {purchasing ? (
-                    <ActivityIndicator color="#764BA2" />
+                    <ActivityIndicator color="#0F2B5B" />
                   ) : (
                     <Text style={styles.primaryButtonText}>
                       {selectedPackage
@@ -488,7 +491,7 @@ Price: ${selectedPackage?.product.priceString || "N/A"}`}
                   style={styles.webDialogButton}
                   onPress={() => setWebMockDialogState("failed")}
                 >
-                  <Text style={[styles.webDialogButtonText, { color: "#FF3B30" }]}>
+                  <Text style={[styles.webDialogButtonText, { color: "#EF4444" }]}>
                     Test Failed Purchase
                   </Text>
                 </TouchableOpacity>
@@ -563,7 +566,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: "#94A3B8",
     marginTop: 16,
   },
   scrollView: {
@@ -579,7 +582,9 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   premiumBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    backgroundColor: "rgba(245, 158, 11, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.4)",
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -588,32 +593,36 @@ const styles = StyleSheet.create({
   premiumBadgeText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#fff",
+    color: "#F59E0B",
     letterSpacing: 1.5,
   },
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#FFFFFF",
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: "#94A3B8",
     textAlign: "center",
     marginTop: 8,
   },
   featuresCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: "#1A3A6B",
     borderRadius: 20,
     padding: 20,
     marginBottom: 24,
     width: "100%",
+    borderLeftWidth: 3,
+    borderLeftColor: "#F59E0B",
+    borderWidth: 1,
+    borderColor: "#1E3A5F",
   },
   featuresCardTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "rgba(255, 255, 255, 0.7)",
+    color: "#F59E0B",
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 16,
@@ -641,11 +650,11 @@ const styles = StyleSheet.create({
   featureTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#fff",
+    color: "#FFFFFF",
   },
   featureDescription: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.75)",
+    color: "#94A3B8",
     marginTop: 2,
   },
   packagesContainer: {
@@ -656,15 +665,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.2)",
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "#1E3A5F",
+    backgroundColor: "#1A3A6B",
     overflow: "hidden",
     width: "100%",
   },
   packageCardSelected: {
-    borderColor: "#fff",
+    borderColor: "#F59E0B",
     borderWidth: 2,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "#1A3A6B",
   },
   selectedIndicator: {
     position: "absolute",
@@ -672,7 +681,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: "#fff",
+    backgroundColor: "#F59E0B",
   },
   packageHeader: {
     flexDirection: "row",
@@ -682,30 +691,30 @@ const styles = StyleSheet.create({
   packageTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#fff",
+    color: "#FFFFFF",
   },
   checkmarkCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
+    backgroundColor: "rgba(245, 158, 11, 0.25)",
     justifyContent: "center",
     alignItems: "center",
   },
   checkmark: {
     fontSize: 14,
-    color: "#fff",
+    color: "#F59E0B",
     fontWeight: "bold",
   },
   packagePrice: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#F59E0B",
     marginTop: 8,
   },
   packageDescription: {
     fontSize: 14,
-    color: "rgba(255, 255, 255, 0.75)",
+    color: "#94A3B8",
     marginTop: 4,
   },
   noPackagesContainer: {
@@ -714,7 +723,7 @@ const styles = StyleSheet.create({
   },
   noPackagesText: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: "#94A3B8",
     textAlign: "center",
   },
   devMockButton: {
@@ -723,12 +732,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.4)",
+    borderColor: "rgba(245, 158, 11, 0.4)",
     borderStyle: "dashed",
     alignItems: "center",
   },
   devMockButtonText: {
-    color: "rgba(255, 255, 255, 0.7)",
+    color: "#F59E0B",
     fontSize: 13,
     textAlign: "center",
   },
@@ -739,23 +748,23 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   primaryButton: {
-    backgroundColor: "#fff",
+    backgroundColor: "#F59E0B",
     paddingVertical: 16,
     borderRadius: 16,
     alignItems: "center",
-    shadowColor: "#000",
+    shadowColor: "#F59E0B",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
   },
   primaryButtonText: {
-    color: "#764BA2",
+    color: "#0F2B5B",
     fontSize: 18,
     fontWeight: "bold",
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   secondaryButton: {
     paddingVertical: 12,
@@ -763,11 +772,11 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.9)",
+    color: "#94A3B8",
   },
   legalText: {
     fontSize: 11,
-    color: "rgba(255, 255, 255, 0.6)",
+    color: "#64748B",
     textAlign: "center",
     lineHeight: 16,
   },
@@ -779,22 +788,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 100,
   },
   webDialogBox: {
-    backgroundColor: "#f2f2f7",
+    backgroundColor: "#1A3A6B",
     borderRadius: 14,
     width: "85%",
     maxWidth: 400,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#1E3A5F",
   },
   webDialogTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#000",
+    color: "#FFFFFF",
     textAlign: "center",
     paddingHorizontal: 16,
     paddingTop: 20,
@@ -802,7 +813,7 @@ const styles = StyleSheet.create({
   },
   webDialogBody: {
     fontSize: 13,
-    color: "#000",
+    color: "#94A3B8",
     textAlign: "center",
     paddingHorizontal: 16,
     paddingBottom: 20,
@@ -810,7 +821,7 @@ const styles = StyleSheet.create({
   },
   webDialogDivider: {
     height: 1,
-    backgroundColor: "rgba(0,0,0,0.15)",
+    backgroundColor: "#1E3A5F",
   },
   webDialogButton: {
     paddingVertical: 14,
@@ -837,7 +848,7 @@ const styles = StyleSheet.create({
   floatingOrb: {
     position: "absolute",
     borderRadius: 999,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    backgroundColor: "rgba(245, 158, 11, 0.06)",
   },
   orb1: {
     width: 200,
@@ -865,13 +876,15 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.3)",
     justifyContent: "center",
     alignItems: "center",
   },
   subscribedCloseText: {
     fontSize: 18,
-    color: "#fff",
+    color: "#F59E0B",
     fontWeight: "600",
   },
   subscribedContent: {
@@ -889,7 +902,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
     top: -20,
     left: -20,
   },
@@ -897,7 +910,9 @@ const styles = StyleSheet.create({
     fontSize: 80,
   },
   proMemberBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    backgroundColor: "rgba(245, 158, 11, 0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.4)",
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -906,37 +921,21 @@ const styles = StyleSheet.create({
   proMemberText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#fff",
+    color: "#F59E0B",
     letterSpacing: 1.5,
   },
   subscribedTitle: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#fff",
+    color: "#FFFFFF",
     textAlign: "center",
     marginBottom: 8,
   },
   subscribedSubtitle: {
     fontSize: 16,
-    color: "rgba(255, 255, 255, 0.85)",
+    color: "#94A3B8",
     textAlign: "center",
     marginBottom: 32,
-  },
-  featuresCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 20,
-    padding: 20,
-    width: "100%",
-    marginBottom: 32,
-  },
-  featuresCardTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "rgba(255, 255, 255, 0.7)",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: 16,
-    textAlign: "center",
   },
   featureCheckRow: {
     flexDirection: "row",
@@ -947,19 +946,19 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(245, 158, 11, 0.2)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
   checkMark: {
     fontSize: 14,
-    color: "#fff",
+    color: "#F59E0B",
     fontWeight: "bold",
   },
   featureCheckText: {
     fontSize: 16,
-    color: "#fff",
+    color: "#FFFFFF",
     fontWeight: "500",
   },
   exploreButton: {
@@ -968,15 +967,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   exploreButtonInner: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "#F59E0B",
     paddingVertical: 18,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.3)",
     borderRadius: 16,
   },
   exploreButtonText: {
-    color: "#fff",
+    color: "#0F2B5B",
     fontSize: 18,
     fontWeight: "bold",
   },
