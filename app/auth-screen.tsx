@@ -243,9 +243,7 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.legalText}>
-          By continuing, you agree to our Terms of Service and Privacy Policy.
-        </Text>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -405,12 +403,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.text,
-  },
-  legalText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: 24,
-    lineHeight: 18,
   },
 });
