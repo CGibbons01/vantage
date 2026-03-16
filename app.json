@@ -4,10 +4,10 @@
     "slug": "vantage-ai-recruitment",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/app-icon-odn.png",
+    "icon": "./assets/images/app-icon-lca.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/images/app-icon-odn.png",
+      "image": "./assets/images/app-icon-lca.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -29,7 +29,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon-odn.png",
+        "foregroundImage": "./assets/images/app-icon-lca.png",
         "backgroundColor": "#000000"
       },
       "package": "com.placeholder.app"
