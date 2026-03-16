@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -160,9 +161,11 @@ export default function AuthScreen() {
       >
         {/* Logo / Brand */}
         <View style={styles.brandSection}>
-          <View style={styles.logoCircle}>
-            <Briefcase size={32} color={COLORS.accent} />
-          </View>
+          <Image
+            source={require('../assets/images/app-icon-lca.png')}
+            style={styles.logoImage}
+            resizeMode="cover"
+          />
           <Text style={styles.brandTitle}>Vantage AI</Text>
           <Text style={styles.brandSubtitle}>Your AI-powered career companion</Text>
         </View>
@@ -331,15 +334,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 36,
   },
-  logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: COLORS.accentMuted,
-    borderWidth: 1,
-    borderColor: COLORS.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
+  logoImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 16,
     marginBottom: 16,
   },
   brandTitle: {

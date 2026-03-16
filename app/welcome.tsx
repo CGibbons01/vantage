@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Animated,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -112,9 +113,11 @@ export default function WelcomeScreen() {
           { opacity: fadeAnim, transform: [{ translateY: heroSlide }] },
         ]}
       >
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoMonogram}>V</Text>
-        </View>
+        <Image
+          source={require('../assets/images/app-icon-lca.png')}
+          style={styles.logoImage}
+          resizeMode="cover"
+        />
         <Text style={styles.appName}>Vantage</Text>
         <Text style={styles.tagline}>AI-Powered Recruitment</Text>
       </Animated.View>
@@ -209,27 +212,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 32,
   },
-  logoCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 28,
-    backgroundColor: AMBER_MUTED,
-    borderWidth: 1.5,
-    borderColor: AMBER,
-    justifyContent: 'center',
-    alignItems: 'center',
+  logoImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 20,
     marginBottom: 20,
-    shadowColor: AMBER,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  logoMonogram: {
-    fontSize: 44,
-    fontWeight: '800',
-    color: AMBER,
-    letterSpacing: -1,
   },
   appName: {
     fontSize: 40,
