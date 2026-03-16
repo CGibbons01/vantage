@@ -1,7 +1,17 @@
 import React from "react";
-import { View } from "react-native";
+import { View, Image } from "react-native";
 import { Tabs } from "expo-router";
 import FloatingTabBar from "@/components/FloatingTabBar";
+
+function HeaderLogo() {
+  return (
+    <Image
+      source={require("../../assets/images/app-icon-lca.png")}
+      style={{ width: 32, height: 32, borderRadius: 8 }}
+      resizeMode="cover"
+    />
+  );
+}
 
 const TABS = [
   { name: "index", route: "/(tabs)/", icon: "home" as const, label: "Dashboard" },
@@ -15,7 +25,14 @@ export default function TabLayout() {
   return (
     <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
       <Tabs
-        screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}
+        screenOptions={{
+          headerShown: true,
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: "center",
+          headerStyle: { backgroundColor: "#0F172A" },
+          headerShadowVisible: false,
+          tabBarStyle: { display: "none" },
+        }}
       >
         <Tabs.Screen name="index" />
         <Tabs.Screen name="jobs" />
