@@ -9,32 +9,67 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Briefcase, Mail, Lock, User, Eye, EyeOff, Chrome } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS } from '@/constants/theme';
+import { isOnboardingComplete } from '@/utils/onboardingStorage';
 
 export default function AuthScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const { user, loading, signInWithEmail, signUpWithEmail, signInWithApple, signInWithGoogle } = useAuth();
 
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const initialMode = params.mode === 'signup' ? 'signup' : 'signin';
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [submittingEmail, setSubmittingEmail] = useState(false);
+  const [submittingApple, setSubmittingApple] = useState(false);
+  const [submittingGoogle, setSubmittingGoogle] = useState(false);
   const [error, setError] = useState('');
+
+  const anySubmitting = submittingEmail || submittingApple || submittingGoogle;
 
   useEffect(() => {
     if (user) {
-      console.log('[Auth] User authenticated, navigating to paywall');
-      router.replace('/paywall');
+      console.log('[Auth] User authenticated, checking onboarding status');
+      handlePostAuthNavigation();
     }
   }, [user]);
+
+  const handlePostAuthNavigation = async () => {
+    try {
+      const onboardingDone = await isOnboardingComplete();
+      console.log('[Auth] Onboarding complete:', onboardingDone);
+      if (onboardingDone) {
+        console.log('[Auth] Routing to tabs (onboarding already done)');
+        router.replace('/(tabs)');
+      } else {
+        console.log('[Auth] Routing to paywall (new user)');
+        router.replace('/paywall');
+      }
+    } catch (e) {
+      console.error('[Auth] Error checking onboarding status:', e);
+      router.replace('/paywall');
+    }
+  };
+
+  const switchMode = (next: 'signin' | 'signup') => {
+    console.log(`[Auth] Switching mode to ${next}`);
+    setMode(next);
+    setName('');
+    setEmail('');
+    setPassword('');
+    setShowPassword(false);
+    setError('');
+  };
 
   const handleEmailAuth = async () => {
     if (!email.trim() || !password.trim()) {
@@ -46,7 +81,7 @@ export default function AuthScreen() {
       return;
     }
     setError('');
-    setSubmitting(true);
+    setSubmittingEmail(true);
     console.log(`[Auth] Attempting ${mode} with email: ${email}`);
     try {
       if (mode === 'signin') {
@@ -58,13 +93,22 @@ export default function AuthScreen() {
       console.error('[Auth] Email auth error:', e);
       setError(e?.message || 'Authentication failed. Please try again.');
     } finally {
-      setSubmitting(false);
+      setSubmittingEmail(false);
     }
+  };
+
+  const handleForgotPassword = () => {
+    console.log('[Auth] Forgot password pressed');
+    Alert.alert(
+      'Reset Password',
+      'Please contact support at support@vantageai.com to reset your password.',
+      [{ text: 'OK' }]
+    );
   };
 
   const handleApple = async () => {
     setError('');
-    setSubmitting(true);
+    setSubmittingApple(true);
     console.log('[Auth] Attempting Apple sign in');
     try {
       await signInWithApple();
@@ -74,13 +118,13 @@ export default function AuthScreen() {
         setError(e?.message || 'Apple sign in failed.');
       }
     } finally {
-      setSubmitting(false);
+      setSubmittingApple(false);
     }
   };
 
   const handleGoogle = async () => {
     setError('');
-    setSubmitting(true);
+    setSubmittingGoogle(true);
     console.log('[Auth] Attempting Google sign in');
     try {
       await signInWithGoogle();
@@ -90,7 +134,7 @@ export default function AuthScreen() {
         setError(e?.message || 'Google sign in failed.');
       }
     } finally {
-      setSubmitting(false);
+      setSubmittingGoogle(false);
     }
   };
 
@@ -101,6 +145,8 @@ export default function AuthScreen() {
       </View>
     );
   }
+
+  const primaryBtnLabel = mode === 'signin' ? 'Sign In' : 'Create Account';
 
   return (
     <KeyboardAvoidingView
@@ -125,7 +171,8 @@ export default function AuthScreen() {
         <View style={styles.modeToggle}>
           <TouchableOpacity
             style={[styles.modeBtn, mode === 'signin' && styles.modeBtnActive]}
-            onPress={() => { setMode('signin'); setError(''); }}
+            onPress={() => switchMode('signin')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.modeBtnText, mode === 'signin' && styles.modeBtnTextActive]}>
               Sign In
@@ -133,7 +180,8 @@ export default function AuthScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
-            onPress={() => { setMode('signup'); setError(''); }}
+            onPress={() => switchMode('signup')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]}>
               Create Account
@@ -193,6 +241,12 @@ export default function AuthScreen() {
             </TouchableOpacity>
           </View>
 
+          {mode === 'signin' && (
+            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBtn} activeOpacity={0.7}>
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+          )}
+
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
@@ -200,14 +254,14 @@ export default function AuthScreen() {
           ) : null}
 
           <TouchableOpacity
-            style={[styles.primaryBtn, submitting && styles.primaryBtnDisabled]}
+            style={[styles.primaryBtn, (submittingEmail || anySubmitting) && styles.primaryBtnDisabled]}
             onPress={handleEmailAuth}
-            disabled={submitting}
+            disabled={anySubmitting}
             activeOpacity={0.85}
           >
-            {submitting
+            {submittingEmail
               ? <ActivityIndicator color="#000" size="small" />
-              : <Text style={styles.primaryBtnText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
+              : <Text style={styles.primaryBtnText}>{primaryBtnLabel}</Text>
             }
           </TouchableOpacity>
         </View>
@@ -223,27 +277,39 @@ export default function AuthScreen() {
         <View style={styles.socialButtons}>
           {/* Apple first — App Store requirement */}
           <TouchableOpacity
-            style={styles.socialBtn}
+            style={[styles.socialBtn, submittingApple && styles.socialBtnDisabled]}
             onPress={handleApple}
-            disabled={submitting}
+            disabled={anySubmitting}
             activeOpacity={0.85}
           >
-            <Text style={styles.appleIcon}></Text>
-            <Text style={styles.socialBtnText}>Continue with Apple</Text>
+            {submittingApple
+              ? <ActivityIndicator color={COLORS.text} size="small" />
+              : (
+                <>
+                  <Text style={styles.appleIcon}></Text>
+                  <Text style={styles.socialBtnText}>Continue with Apple</Text>
+                </>
+              )
+            }
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.socialBtn}
+            style={[styles.socialBtn, submittingGoogle && styles.socialBtnDisabled]}
             onPress={handleGoogle}
-            disabled={submitting}
+            disabled={anySubmitting}
             activeOpacity={0.85}
           >
-            <Chrome size={20} color={COLORS.text} />
-            <Text style={styles.socialBtnText}>Continue with Google</Text>
+            {submittingGoogle
+              ? <ActivityIndicator color={COLORS.text} size="small" />
+              : (
+                <>
+                  <Chrome size={20} color={COLORS.text} />
+                  <Text style={styles.socialBtnText}>Continue with Google</Text>
+                </>
+              )
+            }
           </TouchableOpacity>
         </View>
-
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -337,6 +403,15 @@ const styles = StyleSheet.create({
   eyeBtn: {
     padding: 4,
   },
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+  },
+  forgotText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.accent,
+  },
   errorBox: {
     backgroundColor: COLORS.errorMuted,
     borderRadius: 10,
@@ -393,6 +468,9 @@ const styles = StyleSheet.create({
     height: 52,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  socialBtnDisabled: {
+    opacity: 0.6,
   },
   appleIcon: {
     fontSize: 20,

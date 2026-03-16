@@ -83,13 +83,13 @@ export default function WelcomeScreen() {
   }, []);
 
   const handleGetStarted = () => {
-    console.log('[Welcome] Get Started pressed — navigating to auth-screen');
-    router.push('/auth-screen');
+    console.log('[Welcome] Get Started pressed — navigating to auth-screen signup');
+    router.push('/auth-screen?mode=signup');
   };
 
   const handleSignIn = () => {
-    console.log('[Welcome] Sign In pressed — navigating to auth-screen');
-    router.push('/auth-screen');
+    console.log('[Welcome] Sign In pressed — navigating to auth-screen signin');
+    router.push('/auth-screen?mode=signin');
   };
 
   const handlePrivacy = () => {
