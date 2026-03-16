@@ -159,6 +159,22 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 404);
   });
 
+  test("Update application - invalid UUID format", async () => {
+    const res = await authenticatedApi("/api/applications/invalid-uuid", authToken, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  test("Delete application - invalid UUID format", async () => {
+    const res = await authenticatedApi("/api/applications/invalid-uuid", authToken, {
+      method: "DELETE",
+    });
+    await expectStatus(res, 400);
+  });
+
   // CV Generation AI endpoint
   test("Generate CV", async () => {
     const res = await authenticatedApi("/api/cv/generate", authToken, {
@@ -237,12 +253,11 @@ describe("API Integration Tests", () => {
 
   // CV Scoring AI endpoint
   test("Score CV", async () => {
+    const form = new FormData();
+    form.append("cv", createTestFile("resume.pdf", "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js\nExperience: 5 years", "application/pdf"));
     const res = await authenticatedApi("/api/cv/score", authToken, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cv_text: "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js\nExperience: 5 years",
-      }),
+      body: form,
     });
     await expectStatus(res, 200);
     const data = await res.json();
@@ -251,10 +266,11 @@ describe("API Integration Tests", () => {
   });
 
   test("Score CV - missing required field", async () => {
+    const form = new FormData();
+    // Upload empty form without "cv" field
     const res = await authenticatedApi("/api/cv/score", authToken, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: form,
     });
     await expectStatus(res, 400);
   });

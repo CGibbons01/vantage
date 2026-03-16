@@ -96,11 +96,19 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
       url.searchParams.append('content-type', 'application/json');
 
       const response = await fetch(url.toString());
-      const data = await response.json() as any;
 
       if (!response.ok) {
-        app.logger.error({ status: response.status, data }, 'Adzuna API error');
-        return reply.status(response.status).send({ error: 'Failed to search jobs' });
+        const text = await response.text();
+        app.logger.error({ status: response.status, responseText: text.substring(0, 500) }, 'Adzuna API error');
+        return reply.status(500).send({ error: 'Job search service is currently unavailable' });
+      }
+
+      let data: any;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        app.logger.error({ err: parseError, status: response.status }, 'Failed to parse Adzuna API response');
+        return reply.status(500).send({ error: 'Invalid response from job search service' });
       }
 
       const transformedJobs: TransformedJob[] = (data.results || []).map((job: AdzunaJob) => ({
@@ -125,7 +133,7 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
       };
     } catch (error) {
       app.logger.error({ err: error, keywords, location }, 'Failed to search jobs');
-      throw error;
+      return reply.status(500).send({ error: 'Failed to search jobs' });
     }
   });
 
