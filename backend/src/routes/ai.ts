@@ -176,24 +176,47 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Generating CV');
 
     try {
-      const expText = body.experience.map(e => `${e.role} at ${e.company}: ${e.description}`).join('; ');
-      const eduText = body.education.map(e => `${e.degree} - ${e.institution}`).join('; ');
+      const prompt = `Generate a professional CV in JSON format for ${body.name} applying for ${body.target_role}.
+Return ONLY valid JSON with this structure:
+{
+  "cv_text": "Full formatted CV as text",
+  "sections": {
+    "professional_summary": "2-3 sentence summary",
+    "experience": "Work history",
+    "education": "Education background",
+    "skills": "Skills list",
+    "achievements": "Key achievements"
+  }
+}
 
-      const prompt = `CV for ${body.name} targeting ${body.target_role}. Exp: ${expText}. Edu: ${eduText}. Skills: ${body.skills.join(', ')}. Return JSON with cv_text and sections.`;
+Experience: ${body.experience[0]?.role || 'Professional'}
+Education: ${body.education[0]?.degree || 'Degree'}
+Skills: ${body.skills.slice(0, 3).join(', ')}`;
 
       try {
-        const { object } = await generateObject({
+        const { text } = await generateText({
           model: gateway('openai/gpt-4o-mini'),
-          schema: cvGenerateResponseSchema,
-          schemaName: 'CVGeneration',
-          schemaDescription: 'Generated professional CV with sections',
           prompt,
         });
 
-        app.logger.info({ userId: session.user.id }, 'CV generated successfully');
-        return object;
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+          const result = cvGenerateResponseSchema.safeParse(parsed);
+
+          if (result.success) {
+            app.logger.info({ userId: session.user.id }, 'CV generated successfully');
+            return result.data;
+          } else {
+            app.logger.error({ err: result.error, userId: session.user.id }, 'CV generation schema validation failed');
+            return reply.status(500).send({ error: 'Failed to generate valid CV' });
+          }
+        } catch (parseError) {
+          app.logger.error({ err: parseError, userId: session.user.id }, 'Failed to parse CV generation response');
+          return reply.status(500).send({ error: 'Failed to parse CV generation response' });
+        }
       } catch (aiError) {
-        app.logger.error({ err: aiError, userId: session.user.id }, 'CV generation failed');
+        app.logger.error({ err: aiError, userId: session.user.id }, 'CV generation AI call failed');
         return reply.status(500).send({ error: 'Failed to generate CV' });
       }
     } catch (error) {
@@ -247,22 +270,40 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Improving CV');
 
     try {
-      const focus = body.focus_areas?.join(', ') || 'all';
-      const prompt = `Improve CV for ${body.target_role}. Focus: ${focus}. CV: ${body.cv_text.substring(0, 300)}. Return JSON with improved_cv_text, suggestions, score_before, score_after.`;
+      const prompt = `Improve this CV for ${body.target_role}. Return ONLY valid JSON:
+{
+  "improved_cv_text": "Enhanced CV text",
+  "suggestions": ["suggestion1", "suggestion2"],
+  "score_before": 60,
+  "score_after": 85
+}
+
+CV: ${body.cv_text.substring(0, 150)}`;
 
       try {
-        const { object } = await generateObject({
+        const { text } = await generateText({
           model: gateway('openai/gpt-4o-mini'),
-          schema: cvImproveResponseSchema,
-          schemaName: 'CVImprovement',
-          schemaDescription: 'Improved CV with suggestions and scores',
           prompt,
         });
 
-        app.logger.info({ userId: session.user.id, scoreBefore: object.score_before, scoreAfter: object.score_after }, 'CV improved successfully');
-        return object;
+        try {
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+          const result = cvImproveResponseSchema.safeParse(parsed);
+
+          if (result.success) {
+            app.logger.info({ userId: session.user.id, scoreBefore: result.data.score_before, scoreAfter: result.data.score_after }, 'CV improved successfully');
+            return result.data;
+          } else {
+            app.logger.error({ err: result.error, userId: session.user.id }, 'CV improvement schema validation failed');
+            return reply.status(500).send({ error: 'Failed to improve CV with valid schema' });
+          }
+        } catch (parseError) {
+          app.logger.error({ err: parseError, userId: session.user.id }, 'Failed to parse CV improvement response');
+          return reply.status(500).send({ error: 'Failed to parse CV improvement response' });
+        }
       } catch (aiError) {
-        app.logger.error({ err: aiError, userId: session.user.id }, 'CV improvement failed');
+        app.logger.error({ err: aiError, userId: session.user.id }, 'CV improvement AI call failed');
         return reply.status(500).send({ error: 'Failed to improve CV' });
       }
     } catch (error) {
@@ -469,13 +510,6 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     schema: {
       description: 'Score and analyze a CV with detailed insights using GPT-4o',
       tags: ['ai', 'cv'],
-      body: {
-        type: 'object',
-        required: ['cv_text'],
-        properties: {
-          cv_text: { type: 'string' },
-        },
-      },
       response: {
         200: {
           type: 'object',
@@ -504,25 +538,89 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: { cv_text: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { cv_text } = request.body;
-
-    if (!cv_text || cv_text.trim().length === 0) {
-      return reply.status(400).send({ error: 'cv_text is required and cannot be empty' });
-    }
-
-    app.logger.info({ userId: session.user.id, cvLength: cv_text.length }, 'Processing CV score request');
+    // Log request details for debugging
+    const contentType = request.headers['content-type'];
+    app.logger.info({ userId: session.user.id, contentType }, 'CV score request received');
 
     try {
+      // Parse multipart form data
+      let cvFile: any = null;
+      let jobDescription: string | null = null;
+      let cvText: string = '';
+      let cvFilename: string = '';
+
+      try {
+        const parts = request.parts();
+        for await (const part of parts) {
+          if (part.type === 'file' && part.fieldname === 'cv') {
+            cvFile = part;
+          } else if (part.type === 'field' && part.fieldname === 'jobDescription') {
+            jobDescription = part.value as string;
+          }
+        }
+      } catch (partsError) {
+        app.logger.error({ err: partsError, stack: (partsError as Error).stack }, 'Error parsing multipart form');
+        return reply.status(400).send({ error: 'Invalid multipart form data' });
+      }
+
+      if (!cvFile) {
+        return reply.status(400).send({ error: 'No CV file uploaded. Please upload a file with field name "cv"' });
+      }
+
+      cvFilename = cvFile.filename;
+      const mimeType = cvFile.mimetype;
+      const validMimeTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+
+      if (!validMimeTypes.includes(mimeType)) {
+        return reply.status(400).send({ error: `Unsupported file type: ${mimeType}. Accepted types: PDF, Word, plain text` });
+      }
+
+      // Get file buffer
+      let buffer: Buffer;
+      try {
+        buffer = await cvFile.toBuffer();
+        if (buffer.length > 10 * 1024 * 1024) {
+          return reply.status(413).send({ error: 'File size exceeds 10 MB limit' });
+        }
+      } catch (bufferError) {
+        app.logger.error({ err: bufferError, stack: (bufferError as Error).stack }, 'Error reading file buffer');
+        return reply.status(400).send({ error: 'Failed to read uploaded file' });
+      }
+
+      // Extract text based on file type
+      app.logger.info({ fileName: cvFilename, mimeType }, 'Extracting text from CV file');
+      try {
+        if (mimeType === 'application/pdf') {
+          const require = createRequire(import.meta.url);
+          const pdfParseModule = require('pdf-parse');
+          const pdfParse = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
+          const pdfData = await pdfParse(buffer);
+          cvText = pdfData.text;
+        } else if (mimeType === 'text/plain') {
+          cvText = buffer.toString('utf-8');
+        } else {
+          // For Word documents, use plaintext fallback
+          cvText = buffer.toString('utf-8', 0, Math.min(5000, buffer.length));
+        }
+
+        if (!cvText || cvText.trim().length === 0) {
+          cvText = 'CV content could not be extracted from file';
+        }
+      } catch (extractError) {
+        app.logger.warn({ err: extractError, stack: (extractError as Error).stack }, 'Text extraction failed, using fallback');
+        cvText = buffer.toString('utf-8', 0, Math.min(5000, buffer.length)) || 'CV content could not be extracted';
+      }
+
       // Analyze CV with AI
-      app.logger.info({ userId: session.user.id }, 'Analyzing CV with AI for comprehensive scoring');
+      app.logger.info({ userId: session.user.id, cvLength: cvText.length }, 'Analyzing CV with AI for comprehensive scoring');
 
       const prompt = `Analyze this CV and rate it 0-100. Extract top skills. Identify 2-3 strengths and weaknesses. Suggest 2-3 improvements. Rate each section.
 
-CV: ${cv_text.substring(0, 1000)}
+CV: ${cvText.substring(0, 1000)}
 
 Return ONLY valid JSON matching this schema:
 {"score": 75, "industry_fit": "Technology", "skills": ["JavaScript"], "summary": "Assessment here", "strengths": ["Strength 1"], "weaknesses": ["Weakness 1"], "improvements": ["Improvement 1"], "section_scores": {"summary": 70, "experience": 80, "education": 80, "skills": 90, "formatting": 75}}`;
@@ -536,32 +634,35 @@ Return ONLY valid JSON matching this schema:
           prompt,
         });
 
-        // Update profile with score and industry fit if authenticated
+        // Update profile with score, industry_fit, cv_text, and cv_filename
         if (session?.user?.id) {
           try {
             await app.db.update(schema.profiles)
               .set({
                 cvScore: object.score,
                 industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
+                cvText,
+                cvFilename,
                 updatedAt: new Date(),
               })
               .where(eq(schema.profiles.userId, session.user.id));
 
-            app.logger.info({ userId: session.user.id, cvScore: object.score }, 'Profile updated with CV score');
+            app.logger.info({ userId: session.user.id, cvScore: object.score, fileName: cvFilename }, 'Profile updated with CV score and file');
           } catch (updateError) {
-            app.logger.warn({ err: updateError, userId: session.user.id }, 'Failed to update profile with CV score');
+            app.logger.warn({ err: updateError, stack: (updateError as Error).stack, userId: session.user.id }, 'Failed to update profile with CV score');
+            // Continue anyway - return the score even if profile update fails
           }
         }
 
         app.logger.info({ userId: session.user.id, score: object.score }, 'CV scored successfully');
         return object;
       } catch (aiError) {
-        app.logger.error({ err: aiError, userId: session.user.id }, 'AI analysis failed');
+        app.logger.error({ err: aiError, stack: (aiError as Error).stack, userId: session.user.id }, 'AI analysis failed');
         return reply.status(500).send({ error: 'Failed to analyze CV with AI' });
       }
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to score CV');
-      return reply.status(500).send({ error: 'Failed to process request' });
+      app.logger.error({ err: error, stack: (error as Error).stack, userId: session.user.id }, 'Failed to score CV');
+      return reply.status(500).send({ error: 'Failed to process CV score request' });
     }
   });
 }
