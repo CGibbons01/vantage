@@ -361,8 +361,23 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 401);
   });
 
+  test("Get job detail without auth", async () => {
+    const res = await api("/api/jobs/job-123");
+    await expectStatus(res, 401);
+  });
+
   test("List applications without auth", async () => {
     const res = await api("/api/applications");
+    await expectStatus(res, 401);
+  });
+
+  test("Upload CV without auth", async () => {
+    const form = new FormData();
+    form.append("cv", createTestFile("resume.pdf", "Sample CV content", "application/pdf"));
+    const res = await api("/api/profile/upload-cv", {
+      method: "POST",
+      body: form,
+    });
     await expectStatus(res, 401);
   });
 

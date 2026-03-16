@@ -92,11 +92,20 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
       if (!profile) {
         app.logger.info({ userId: session.user.id }, 'Creating new profile');
         const newProfile = {
-          id: randomUUID(),
           userId: session.user.id,
+          headline: '',
+          summary: '',
+          location: '',
+          phone: '',
+          linkedinUrl: '',
           skills: '[]',
           experience: '[]',
           education: '[]',
+          cvScore: null,
+          industryFit: null,
+          cvText: null,
+          cvFilename: null,
+          updatedAt: new Date(),
         };
         const inserted = await app.db.insert(schema.profiles).values(newProfile).returning();
         profile = inserted[0];
@@ -179,16 +188,29 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
       if (body.experience !== undefined) updateData.experience = JSON.stringify(body.experience);
       if (body.education !== undefined) updateData.education = JSON.stringify(body.education);
 
-      const updated = await app.db.update(schema.profiles)
-        .set(updateData)
-        .where(eq(schema.profiles.userId, session.user.id))
+      // Upsert: insert with conflict resolution on userId
+      const insertData = {
+        userId: session.user.id,
+        headline: body.headline ?? '',
+        summary: body.summary ?? '',
+        location: body.location ?? '',
+        phone: body.phone ?? '',
+        linkedinUrl: body.linkedinUrl ?? '',
+        skills: body.skills ? JSON.stringify(body.skills) : '[]',
+        experience: body.experience ? JSON.stringify(body.experience) : '[]',
+        education: body.education ? JSON.stringify(body.education) : '[]',
+        updatedAt: new Date(),
+      };
+
+      const result = await app.db.insert(schema.profiles)
+        .values(insertData)
+        .onConflictDoUpdate({
+          target: schema.profiles.userId,
+          set: updateData,
+        })
         .returning();
 
-      if (updated.length === 0) {
-        return reply.status(404).send({ error: 'Profile not found' });
-      }
-
-      const profile = updated[0];
+      const profile = result[0];
       const parsedProfile = {
         ...profile,
         skills: JSON.parse(profile.skills),
@@ -339,16 +361,21 @@ Required fields: name, headline, summary, skills (array), experience (array with
         updatedAt: new Date(),
       };
 
-      const updated = await app.db.update(schema.profiles)
-        .set(updateData)
-        .where(eq(schema.profiles.userId, session.user.id))
+      // Upsert: insert with conflict resolution on userId
+      const insertData = {
+        userId: session.user.id,
+        ...updateData,
+      };
+
+      const result = await app.db.insert(schema.profiles)
+        .values(insertData)
+        .onConflictDoUpdate({
+          target: schema.profiles.userId,
+          set: updateData,
+        })
         .returning();
 
-      if (updated.length === 0) {
-        return reply.status(404).send({ error: 'Profile not found' });
-      }
-
-      const profile = updated[0];
+      const profile = result[0];
       const parsedProfile = {
         ...profile,
         skills: JSON.parse(profile.skills),
