@@ -40,6 +40,13 @@ const authBeforeHook = createAuthMiddleware(async (ctx) => {
 });
 
 app.withAuth({
+  // Disable email verification requirement - allow immediate sign-in after sign-up
+  emailVerification: {
+    sendOnSignUp: false,
+    sendOnSignIn: false,
+    autoSignInAfterVerification: false,
+  },
+  // Allow all email formats without domain restrictions
   hooks: {
     before: authBeforeHook,
   },
