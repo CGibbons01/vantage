@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { onboardingQuestions } from "@/constants/OnboardingQuestions";
 import { completeOnboarding } from "@/utils/onboardingStorage";
+import { useAuth } from "@/contexts/AuthContext";
 import { ProgressBar } from "@/components/onboarding/ProgressBar";
 import { OptionCard } from "@/components/onboarding/OptionCard";
 import { useOnboardingColors } from "@/hooks/useOnboardingColors";
@@ -21,6 +22,7 @@ const TOTAL_STEPS = onboardingQuestions.length;
 
 export default function OnboardingScreen() {
   const colors = useOnboardingColors();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const opacity = useSharedValue(1);
@@ -65,7 +67,8 @@ export default function OnboardingScreen() {
 
     if (isLastStep) {
       await completeOnboarding();
-      router.replace("/auth-screen");
+      console.log('[Onboarding] Complete — user signed in:', !!user, '— routing to', user ? '/(tabs)' : '/auth-screen');
+      router.replace(user ? "/(tabs)" : "/auth-screen");
     } else {
       if (isAnimating.current) return;
       isAnimating.current = true;

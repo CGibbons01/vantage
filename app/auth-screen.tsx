@@ -18,7 +18,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Lock, User, Eye, EyeOff, Chrome, Check } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS } from '@/constants/theme';
-import { isOnboardingComplete } from '@/utils/onboardingStorage';
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -59,26 +58,14 @@ export default function AuthScreen() {
   };
 
   const handleGetStarted = () => {
-    console.log('[Auth] Get Started pressed — dismissing success modal and navigating');
+    console.log('[Auth] Get Started pressed — navigating directly to main app');
     setShowSuccessModal(false);
-    handlePostAuthNavigation();
+    router.replace('/(tabs)');
   };
 
-  const handlePostAuthNavigation = async () => {
-    try {
-      const onboardingDone = await isOnboardingComplete();
-      console.log('[Auth] Onboarding complete:', onboardingDone);
-      if (onboardingDone) {
-        console.log('[Auth] Routing to tabs (onboarding already done)');
-        router.replace('/(tabs)');
-      } else {
-        console.log('[Auth] Routing to paywall (new user)');
-        router.replace('/paywall');
-      }
-    } catch (e) {
-      console.error('[Auth] Error checking onboarding status:', e);
-      router.replace('/paywall');
-    }
+  const handlePostAuthNavigation = () => {
+    console.log('[Auth] Social sign-in complete — navigating to main app');
+    router.replace('/(tabs)');
   };
 
   const handleCreateAccount = async () => {
