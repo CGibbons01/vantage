@@ -502,7 +502,11 @@ export default function DashboardScreen() {
         console.log('[Dashboard] No CV text in response to save');
       }
 
+      const profileUpdated = (data as any)?.profile_updated === true;
+      console.log('[Dashboard] profile_updated:', profileUpdated);
+
       await fetchProfile();
+      console.log('[Dashboard] Profile refreshed after CV upload');
     } catch (e: any) {
       const msg = e?.message || (typeof e === 'string' ? e : JSON.stringify(e)) || 'Unknown error';
       console.error('[Dashboard] CV upload error:', msg, e);
@@ -614,7 +618,7 @@ export default function DashboardScreen() {
           {uploadSuccess && !cvResult && (
             <View style={styles.successRow}>
               <CheckCircle size={16} color={COLORS.success} />
-              <Text style={styles.successText}>CV uploaded successfully!</Text>
+              <Text style={styles.successText}>CV analysed & profile updated</Text>
             </View>
           )}
         </View>
