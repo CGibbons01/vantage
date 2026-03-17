@@ -10,7 +10,8 @@
     "start": "node --import @specific-dev/framework/telemetry dist/index.js",
     "db:generate": "tsx node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:push": "npm run db:generate && npm run db:migrate"
+    "db:push": "npm run db:generate && npm run db:migrate",
+    "db:cleanup": "tsx src/db/cleanup.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.2.17",
