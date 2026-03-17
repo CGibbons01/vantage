@@ -99,7 +99,7 @@ export default function PrivacyScreen() {
 
         <Section title="Your Rights">
           <Text style={styles.bodyText}>
-            You may request deletion of your account and all associated data at any time by contacting us at support@vantageai.app. You can withdraw notification consent at any time in the app settings under Notification Preferences.
+            You may request deletion of your account and all associated data at any time by contacting us at admin@gibbonsrecruitment.com. You can withdraw notification consent at any time in the app settings under Notification Preferences.
           </Text>
         </Section>
 
@@ -108,7 +108,7 @@ export default function PrivacyScreen() {
             For privacy enquiries, please contact us at:
           </Text>
           <View style={styles.contactCard}>
-            <Text style={styles.contactEmail}>support@vantageai.app</Text>
+            <Text style={styles.contactEmail}>admin@gibbonsrecruitment.com</Text>
           </View>
         </Section>
       </ScrollView>
