@@ -382,12 +382,10 @@ describe("API Integration Tests", () => {
   });
 
   test("Score CV without auth", async () => {
+    const form = new FormData();
     const res = await api("/api/cv/score", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cv_text: "Sample CV",
-      }),
+      body: form,
     });
     await expectStatus(res, 401);
   });
