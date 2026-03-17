@@ -19,9 +19,10 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
-import { Platform } from "react-native";
+import { Platform, AppState, AppStateStatus } from "react-native";
 import Purchases, {
   PurchasesOfferings,
   PurchasesOffering,
@@ -100,6 +101,10 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [isConfigured, setIsConfigured] = useState(false);
+
+  // Cache: track last successful getCustomerInfo() call to avoid rate-limiting (RC error 7638 / 429)
+  const lastFetchedAt = useRef<number>(0);
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
     // Fetch offerings via REST API for web platform
   const fetchOfferingsViaRest = async () => {
@@ -237,7 +242,8 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
           // Anonymous user - only log out once auth has fully resolved
           await Purchases.logOut();
         }
-        await checkSubscription();
+        // Force a fresh check after identity change — user may have a different subscription
+        await checkSubscription(true);
       } catch (error) {
         console.error("[RevenueCat] Failed to update user:", error);
       }
@@ -245,6 +251,21 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
 
     updateUser();
   }, [user?.id, isConfigured, authLoading]);
+
+  // Re-check subscription when app comes back to foreground, respecting the 5-minute cache
+  useEffect(() => {
+    if (isWeb) return;
+
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === "active") {
+        console.log("[RevenueCat] App foregrounded — checking subscription (cache-gated)");
+        checkSubscription();
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+    return () => subscription.remove();
+  }, [isConfigured]);
 
   const fetchOfferings = async () => {
     if (isWeb) return;
@@ -261,10 +282,20 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
     }
   };
 
-  const checkSubscription = async () => {
+  const checkSubscription = async (force = false) => {
     if (isWeb) return;
+
+    // Respect 5-minute cache to avoid RC rate-limit (error 7638 / HTTP 429)
+    const now = Date.now();
+    if (!force && now - lastFetchedAt.current < CACHE_TTL_MS) {
+      console.log("[RevenueCat] checkSubscription: skipping — cached result still fresh");
+      return;
+    }
+
     try {
+      console.log("[RevenueCat] checkSubscription: calling getCustomerInfo()");
       const customerInfo = await Purchases.getCustomerInfo();
+      lastFetchedAt.current = Date.now();
       const hasEntitlement =
         typeof customerInfo.entitlements.active[ENTITLEMENT_ID] !== "undefined";
       // In __DEV__: RC test store purchases don't survive configure(), so only update state
@@ -277,11 +308,15 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       } else if (!__DEV__) {
         await SecureStore.setItemAsync(NATIVE_PURCHASE_KEY, "false").catch(() => {});
       }
-    } catch (error) {
-      console.error("[RevenueCat] Failed to check subscription:", error);
-      // Don't reset isSubscribed on error — the customerInfoUpdateListener
-      // already set it from local cache after configure(). Overriding with false
-      // would incorrectly show the paywall to subscribed users on network errors.
+    } catch (error: any) {
+      // On 429 / rate-limit (RC backend error 7638), keep last known state — do NOT reset to false
+      const statusCode = error?.userInfo?.statusCode ?? error?.statusCode;
+      if (statusCode === 429) {
+        console.warn("[RevenueCat] Rate limited (429 / error 7638) — keeping last known subscription state");
+      } else {
+        console.error("[RevenueCat] Failed to check subscription:", error);
+      }
+      // Never reset isSubscribed on error — avoids incorrectly showing paywall to subscribed users
     }
   };
 
