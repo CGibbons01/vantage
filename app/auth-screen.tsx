@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Modal,
-  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Mail, Lock, User, Eye, EyeOff, Chrome, Check } from 'lucide-react-native';
+import { Mail, Lock, User, Eye, EyeOff, Chrome } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS } from '@/constants/theme';
 
@@ -35,12 +33,6 @@ export default function AuthScreen() {
   const [submittingApple, setSubmittingApple] = useState(false);
   const [submittingGoogle, setSubmittingGoogle] = useState(false);
   const [error, setError] = useState('');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.85)).current;
-  const cardOpacity = useRef(new Animated.Value(0)).current;
-  const checkScale = useRef(new Animated.Value(0)).current;
 
   const anySubmitting = submittingEmail || submittingApple || submittingGoogle;
 
@@ -51,33 +43,6 @@ export default function AuthScreen() {
     setName('');
     setEmail('');
     setPassword('');
-  };
-
-  const openSuccessModal = () => {
-    console.log('[Auth] Sign-up success — showing success modal');
-    setShowSuccessModal(true);
-    backdropOpacity.setValue(0);
-    cardScale.setValue(0.85);
-    cardOpacity.setValue(0);
-    checkScale.setValue(0);
-    Animated.parallel([
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.spring(cardScale, { toValue: 1, tension: 80, friction: 8, useNativeDriver: true }),
-      Animated.timing(cardOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
-    ]).start(() => {
-      Animated.spring(checkScale, { toValue: 1, tension: 100, friction: 6, useNativeDriver: true }).start();
-    });
-  };
-
-  const handleGetStarted = () => {
-    console.log('[Auth] Get Started pressed — navigating to main app');
-    setShowSuccessModal(false);
-    router.replace('/(tabs)');
-  };
-
-  const handlePostAuthNavigation = () => {
-    console.log('[Auth] Social sign-in complete — navigating to main app');
-    router.replace('/(tabs)');
   };
 
   const handleCreateAccount = async () => {
@@ -93,8 +58,9 @@ export default function AuthScreen() {
     setSubmittingEmail(true);
     console.log('[Auth] Attempting sign-up with email:', email);
     try {
+      // signUpWithEmail auto-signs in and calls fetchUser — AuthGuard navigates automatically
       await signUpWithEmail(email.trim(), password, name.trim());
-      openSuccessModal();
+      console.log('[Auth] Sign-up + auto sign-in complete');
     } catch (e: any) {
       console.error('[Auth] Sign-up error:', e);
       setError(e?.message || 'Account creation failed. Please try again.');
@@ -129,7 +95,8 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting Apple sign in');
     try {
       await signInWithApple();
-      handlePostAuthNavigation();
+      console.log('[Auth] Apple sign-in complete — navigating to main app');
+      router.replace('/(tabs)');
     } catch (e: any) {
       console.error('[Auth] Apple sign in error:', e);
       if (e?.message !== 'Authentication cancelled') {
@@ -146,7 +113,8 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting Google sign in');
     try {
       await signInWithGoogle();
-      handlePostAuthNavigation();
+      console.log('[Auth] Google sign-in complete — navigating to main app');
+      router.replace('/(tabs)');
     } catch (e: any) {
       console.error('[Auth] Google sign in error:', e);
       if (e?.message !== 'Authentication cancelled') {
@@ -342,49 +310,6 @@ export default function AuthScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      {/* Success Modal */}
-      <Modal
-        visible={showSuccessModal}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-      >
-        <Animated.View style={[styles.modalBackdrop, { opacity: backdropOpacity }]}>
-          <Animated.View
-            style={[
-              styles.modalCard,
-              { opacity: cardOpacity, transform: [{ scale: cardScale }] },
-            ]}
-          >
-            {/* Decorative top accent bar */}
-            <View style={styles.modalAccentBar} />
-
-            {/* Checkmark circle */}
-            <Animated.View style={[styles.checkCircleOuter, { transform: [{ scale: checkScale }] }]}>
-              <View style={styles.checkCircleInner}>
-                <Check size={32} color="#fff" strokeWidth={3} />
-              </View>
-            </Animated.View>
-
-            {/* Text content */}
-            <Text style={styles.modalTitle}>Account Created!</Text>
-            <Text style={styles.modalSubtitle}>Welcome to Vantage AI Recruitment</Text>
-            <Text style={styles.modalBody}>
-              Your account is ready. Let's find your next great opportunity.
-            </Text>
-
-            {/* Get Started button */}
-            <TouchableOpacity
-              style={styles.modalBtn}
-              onPress={handleGetStarted}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.modalBtnText}>Get Started</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </Animated.View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -556,82 +481,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: COLORS.text,
-  },
-  // Success Modal
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 28,
-  },
-  modalCard: {
-    width: '100%',
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    alignItems: 'center',
-    paddingBottom: 32,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  modalAccentBar: {
-    width: '100%',
-    height: 4,
-    backgroundColor: COLORS.accent,
-    marginBottom: 36,
-  },
-  checkCircleOuter: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  checkCircleInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.success,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-  modalSubtitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.accent,
-    marginBottom: 12,
-  },
-  modalBody: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 16,
-    marginBottom: 32,
-  },
-  modalBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
-    height: 52,
-    width: '100%',
-    marginHorizontal: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  modalBtnText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
   },
 });
