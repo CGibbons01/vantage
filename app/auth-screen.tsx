@@ -19,11 +19,14 @@ import { Mail, Lock, User, Eye, EyeOff, Chrome, Check } from 'lucide-react-nativ
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS } from '@/constants/theme';
 
+type Mode = 'signup' | 'signin';
+
 export default function AuthScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { loading, signUpWithEmail, signInWithApple, signInWithGoogle } = useAuth();
+  const { loading, signUpWithEmail, signInWithEmail, signInWithApple, signInWithGoogle } = useAuth();
 
+  const [mode, setMode] = useState<Mode>('signup');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,6 +43,15 @@ export default function AuthScreen() {
   const checkScale = useRef(new Animated.Value(0)).current;
 
   const anySubmitting = submittingEmail || submittingApple || submittingGoogle;
+
+  const switchMode = (next: Mode) => {
+    console.log('[Auth] Switching mode to:', next);
+    setMode(next);
+    setError('');
+    setName('');
+    setEmail('');
+    setPassword('');
+  };
 
   const openSuccessModal = () => {
     console.log('[Auth] Sign-up success — showing success modal');
@@ -58,7 +70,7 @@ export default function AuthScreen() {
   };
 
   const handleGetStarted = () => {
-    console.log('[Auth] Get Started pressed — navigating directly to main app');
+    console.log('[Auth] Get Started pressed — navigating to main app');
     setShowSuccessModal(false);
     router.replace('/(tabs)');
   };
@@ -86,6 +98,26 @@ export default function AuthScreen() {
     } catch (e: any) {
       console.error('[Auth] Sign-up error:', e);
       setError(e?.message || 'Account creation failed. Please try again.');
+    } finally {
+      setSubmittingEmail(false);
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!email.trim() || !password.trim()) {
+      setError('Please fill in all fields.');
+      return;
+    }
+    setError('');
+    setSubmittingEmail(true);
+    console.log('[Auth] Attempting sign-in with email:', email);
+    try {
+      await signInWithEmail(email.trim(), password);
+      console.log('[Auth] Sign-in success — navigating to main app');
+      router.replace('/(tabs)');
+    } catch (e: any) {
+      console.error('[Auth] Sign-in error:', e);
+      setError(e?.message || 'Sign in failed. Please check your credentials.');
     } finally {
       setSubmittingEmail(false);
     }
@@ -125,6 +157,12 @@ export default function AuthScreen() {
     }
   };
 
+  const isSignUp = mode === 'signup';
+  const headingTitle = isSignUp ? 'Create Account' : 'Welcome Back';
+  const headingSubtitle = isSignUp ? 'Sign up to get started' : 'Sign in to your account';
+  const primaryBtnLabel = isSignUp ? 'Create Account' : 'Sign In';
+  const primaryBtnAction = isSignUp ? handleCreateAccount : handleSignIn;
+
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
@@ -154,26 +192,50 @@ export default function AuthScreen() {
           <Text style={styles.brandSubtitle}>Your AI-powered career companion</Text>
         </View>
 
+        {/* Mode Toggle */}
+        <View style={styles.toggleRow}>
+          <TouchableOpacity
+            style={[styles.toggleBtn, isSignUp && styles.toggleBtnActive]}
+            onPress={() => switchMode('signup')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggleBtnText, isSignUp && styles.toggleBtnTextActive]}>
+              Create Account
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleBtn, !isSignUp && styles.toggleBtnActive]}
+            onPress={() => switchMode('signin')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.toggleBtnText, !isSignUp && styles.toggleBtnTextActive]}>
+              Sign In
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Heading */}
         <View style={styles.headingSection}>
-          <Text style={styles.headingTitle}>Create Account</Text>
-          <Text style={styles.headingSubtitle}>Sign up to get started</Text>
+          <Text style={styles.headingTitle}>{headingTitle}</Text>
+          <Text style={styles.headingSubtitle}>{headingSubtitle}</Text>
         </View>
 
         {/* Form */}
         <View style={styles.form}>
-          <View style={styles.inputWrapper}>
-            <User size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Full Name"
-              placeholderTextColor={COLORS.textMuted}
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-              returnKeyType="next"
-            />
-          </View>
+          {isSignUp && (
+            <View style={styles.inputWrapper}>
+              <User size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Full Name"
+                placeholderTextColor={COLORS.textMuted}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+            </View>
+          )}
 
           <View style={styles.inputWrapper}>
             <Mail size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
@@ -200,7 +262,7 @@ export default function AuthScreen() {
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               returnKeyType="done"
-              onSubmitEditing={handleCreateAccount}
+              onSubmitEditing={primaryBtnAction}
             />
             <TouchableOpacity
               onPress={() => {
@@ -224,13 +286,13 @@ export default function AuthScreen() {
 
           <TouchableOpacity
             style={[styles.primaryBtn, anySubmitting && styles.primaryBtnDisabled]}
-            onPress={handleCreateAccount}
+            onPress={primaryBtnAction}
             disabled={anySubmitting}
             activeOpacity={0.85}
           >
             {submittingEmail
               ? <ActivityIndicator color="#000" size="small" />
-              : <Text style={styles.primaryBtnText}>Create Account</Text>
+              : <Text style={styles.primaryBtnText}>{primaryBtnLabel}</Text>
             }
           </TouchableOpacity>
         </View>
@@ -359,6 +421,33 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.textSecondary,
     marginTop: 6,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 4,
+    marginBottom: 28,
+  },
+  toggleBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toggleBtnActive: {
+    backgroundColor: COLORS.accent,
+  },
+  toggleBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  toggleBtnTextActive: {
+    color: '#000',
   },
   headingSection: {
     marginBottom: 24,
