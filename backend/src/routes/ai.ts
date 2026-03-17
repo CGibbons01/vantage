@@ -7,6 +7,7 @@ import { z } from 'zod';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
+import { generatePDF, extractTextFromFile } from '../utils/document.js';
 
 const cvGenerateBodySchema = z.object({
   name: z.string(),
@@ -469,6 +470,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
                 formatting: { type: 'integer' },
               },
             },
+            profile_updated: { type: 'boolean' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -572,20 +574,88 @@ Return ONLY valid JSON matching this schema:
           prompt,
         });
 
-        // Update profile with score, industry_fit, cv_text, and cv_filename
+        // Extract profile fields from CV text using AI
+        let profileData: any = {};
+        let profileUpdateFailed = false;
+
+        try {
+          const profileExtractPrompt = `Extract the following information from this CV text and return ONLY valid JSON: name, email, phone, location, headline (professional title), summary (professional summary), linkedin_url, skills (array of strings). If a field is not found, use null for strings or empty array for arrays. CV text: ${cvText.substring(0, 2000)}`;
+
+          const profileSchema = z.object({
+            name: z.string().nullable(),
+            email: z.string().nullable(),
+            phone: z.string().nullable(),
+            location: z.string().nullable(),
+            headline: z.string().nullable(),
+            summary: z.string().nullable(),
+            linkedin_url: z.string().nullable(),
+            skills: z.array(z.string()).default([]),
+          });
+
+          const { object: extractedProfile } = await generateObject({
+            model: gateway('openai/gpt-4o-mini'),
+            schema: profileSchema,
+            prompt: profileExtractPrompt,
+          });
+
+          profileData = extractedProfile;
+        } catch (extractError) {
+          app.logger.warn({ err: extractError }, 'Failed to extract profile fields from CV, continuing with score only');
+          profileUpdateFailed = true;
+        }
+
+        // Upsert profile with extracted fields and scores
         if (session?.user?.id) {
           try {
-            await app.db.update(schema.profiles)
-              .set({
-                cvScore: object.score,
-                industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
-                cvText,
-                cvFilename,
-                updatedAt: new Date(),
-              })
-              .where(eq(schema.profiles.userId, session.user.id));
+            const updateData: any = {
+              cvScore: object.score,
+              industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
+              industryScores: JSON.stringify(object.section_scores || {}),
+              overallScore: object.score,
+              cvText,
+              cvFilename,
+              updatedAt: new Date(),
+            };
 
-            app.logger.info({ userId: session.user.id, cvScore: object.score, fileName: cvFilename }, 'Profile updated with CV score and file');
+            // Only update profile fields if extraction was successful
+            if (!profileUpdateFailed && profileData) {
+              if (profileData.headline) updateData.headline = profileData.headline;
+              if (profileData.summary) updateData.summary = profileData.summary;
+              if (profileData.location) updateData.location = profileData.location;
+              if (profileData.phone) updateData.phone = profileData.phone;
+              if (profileData.linkedin_url) updateData.linkedinUrl = profileData.linkedin_url;
+              if (profileData.skills && profileData.skills.length > 0) updateData.skills = JSON.stringify(profileData.skills);
+            }
+
+            // Upsert: insert with conflict resolution on userId
+            const insertData = {
+              userId: session.user.id,
+              headline: profileData.headline || '',
+              summary: profileData.summary || '',
+              location: profileData.location || '',
+              phone: profileData.phone || '',
+              linkedinUrl: profileData.linkedin_url || '',
+              skills: profileData.skills ? JSON.stringify(profileData.skills) : '[]',
+              experience: '[]',
+              education: '[]',
+              cvScore: object.score,
+              industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
+              industryScores: JSON.stringify(object.section_scores || {}),
+              overallScore: object.score,
+              cvText,
+              cvFilename,
+              updatedAt: new Date(),
+            };
+
+            await app.db.insert(schema.profiles)
+              .values(insertData)
+              .onConflictDoUpdate({
+                target: schema.profiles.userId,
+                set: updateData,
+              })
+              .returning();
+
+            app.logger.info({ userId: session.user.id, cvScore: object.score, fileName: cvFilename }, 'Profile updated with CV score and extracted fields');
           } catch (updateError) {
             app.logger.warn({ err: updateError, stack: (updateError as Error).stack, userId: session.user.id }, 'Failed to update profile with CV score');
             // Continue anyway - return the score even if profile update fails
@@ -593,7 +663,7 @@ Return ONLY valid JSON matching this schema:
         }
 
         app.logger.info({ userId: session.user.id, score: object.score }, 'CV scored successfully');
-        return object;
+        return { ...object, profile_updated: true };
       } catch (aiError) {
         app.logger.error({ err: aiError, stack: (aiError as Error).stack, userId: session.user.id }, 'AI analysis failed');
         return reply.status(500).send({ error: 'Failed to analyze CV with AI' });
@@ -601,6 +671,362 @@ Return ONLY valid JSON matching this schema:
     } catch (error) {
       app.logger.error({ err: error, stack: (error as Error).stack, userId: session.user.id }, 'Failed to score CV');
       return reply.status(500).send({ error: 'Failed to process CV score request' });
+    }
+  });
+
+  // POST /api/cv/export-pdf
+  fastify.post('/api/cv/export-pdf', {
+    schema: {
+      description: 'Export CV content as PDF',
+      tags: ['ai', 'cv'],
+      body: {
+        type: 'object',
+        required: ['content'],
+        properties: {
+          content: { type: 'string' },
+          title: { type: 'string' },
+        },
+      },
+      response: {
+        200: { type: 'string', format: 'binary' },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest<{ Body: { content: string; title?: string } }>, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    const { content, title } = request.body;
+
+    if (!content) {
+      return reply.status(400).send({ error: 'content is required' });
+    }
+
+    try {
+      app.logger.info({ userId: session.user.id }, 'Exporting CV to PDF');
+      const pdfBuffer = await generatePDF(content, title);
+
+      reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', 'attachment; filename="cv.pdf"')
+        .send(pdfBuffer);
+
+      app.logger.info({ userId: session.user.id }, 'CV exported to PDF successfully');
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to export CV to PDF');
+      return reply.status(500).send({ error: 'Failed to generate PDF' });
+    }
+  });
+
+  // POST /api/cover-letter/export-pdf
+  fastify.post('/api/cover-letter/export-pdf', {
+    schema: {
+      description: 'Export cover letter content as PDF',
+      tags: ['ai', 'cover-letter'],
+      body: {
+        type: 'object',
+        required: ['content'],
+        properties: {
+          content: { type: 'string' },
+          title: { type: 'string' },
+        },
+      },
+      response: {
+        200: { type: 'string', format: 'binary' },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest<{ Body: { content: string; title?: string } }>, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    const { content, title } = request.body;
+
+    if (!content) {
+      return reply.status(400).send({ error: 'content is required' });
+    }
+
+    try {
+      app.logger.info({ userId: session.user.id }, 'Exporting cover letter to PDF');
+      const pdfBuffer = await generatePDF(content, title);
+
+      reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', 'attachment; filename="cover-letter.pdf"')
+        .send(pdfBuffer);
+
+      app.logger.info({ userId: session.user.id }, 'Cover letter exported to PDF successfully');
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to export cover letter to PDF');
+      return reply.status(500).send({ error: 'Failed to generate PDF' });
+    }
+  });
+
+  // POST /api/cv/parse
+  fastify.post('/api/cv/parse', {
+    schema: {
+      description: 'Parse uploaded CV file (PDF or DOCX) and extract structured data',
+      tags: ['ai', 'cv'],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            raw_text: { type: 'string' },
+            parsed: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                email: { type: 'string' },
+                phone: { type: 'string' },
+                location: { type: 'string' },
+                headline: { type: 'string' },
+                summary: { type: 'string' },
+                linkedin_url: { type: 'string' },
+                skills: { type: 'array', items: { type: 'string' } },
+                experience: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      title: { type: 'string' },
+                      company: { type: 'string' },
+                      duration: { type: 'string' },
+                      description: { type: 'string' },
+                    },
+                  },
+                },
+                education: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      degree: { type: 'string' },
+                      institution: { type: 'string' },
+                      year: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    app.logger.info({ userId: session.user.id }, 'Parsing CV file');
+
+    try {
+      const fileData = await request.file();
+
+      if (!fileData) {
+        return reply.status(400).send({ error: 'No file uploaded' });
+      }
+
+      const buffer = await fileData.toBuffer();
+      const rawText = await extractTextFromFile(buffer, fileData.mimetype, fileData.filename);
+
+      if (!rawText || rawText.trim().length === 0) {
+        return reply.status(400).send({ error: 'Could not extract text from file' });
+      }
+
+      // Use AI to parse the CV text with fallback values
+      let parsed: any = {
+        name: null,
+        email: null,
+        phone: null,
+        location: null,
+        headline: null,
+        summary: null,
+        linkedin_url: null,
+        skills: [],
+        experience: [],
+        education: [],
+      };
+
+      try {
+        const parsePrompt = `Parse this CV text and return ONLY valid JSON. Return exactly this structure: {name, email, phone, location, headline, summary, linkedin_url, skills, experience, education}. Use null for missing strings, empty arrays for missing lists. CV: ${rawText.substring(0, 2000)}`;
+
+        const { object } = await generateObject({
+          model: gateway('openai/gpt-4o-mini'),
+          schema: z.object({
+            name: z.string().nullable(),
+            email: z.string().nullable(),
+            phone: z.string().nullable(),
+            location: z.string().nullable(),
+            headline: z.string().nullable(),
+            summary: z.string().nullable(),
+            linkedin_url: z.string().nullable(),
+            skills: z.array(z.string()).default([]),
+            experience: z.array(z.object({
+              title: z.string().default(''),
+              company: z.string().default(''),
+              duration: z.string().default(''),
+              description: z.string().default(''),
+            }).optional()).default([]),
+            education: z.array(z.object({
+              degree: z.string().default(''),
+              institution: z.string().default(''),
+              year: z.string().default(''),
+            }).optional()).default([]),
+          }),
+          prompt: parsePrompt,
+        });
+
+        parsed = object;
+        app.logger.info({ userId: session.user.id }, 'CV parsed with AI successfully');
+      } catch (aiError) {
+        app.logger.warn({ err: aiError, userId: session.user.id }, 'AI parsing failed, using extraction fallback');
+        // Extract basic info from raw text using simple heuristics
+        const lines = rawText.split('\n');
+        parsed.name = lines[0]?.trim() || null;
+
+        // Try to find email
+        const emailMatch = rawText.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+        parsed.email = emailMatch ? emailMatch[0] : null;
+
+        // Try to find phone
+        const phoneMatch = rawText.match(/[\d\s\-\+\(\)]{10,}/);
+        parsed.phone = phoneMatch ? phoneMatch[0].trim() : null;
+
+        // Extract skills from text
+        const skillsMatch = rawText.match(/[Ss]kills?:?\s*(.+)/);
+        if (skillsMatch) {
+          parsed.skills = skillsMatch[1].split(/,|;|\band\b/).map(s => s.trim()).filter(s => s.length > 0);
+        }
+      }
+
+      app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
+      return {
+        raw_text: rawText,
+        parsed,
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id, stack: (error as Error).stack }, 'Failed to parse CV');
+      return reply.status(500).send({ error: 'Failed to parse CV file' });
+    }
+  });
+
+  // POST /api/longevity/analyze
+  fastify.post('/api/longevity/analyze', {
+    schema: {
+      description: 'Analyze career longevity and automation risk (Premium feature)',
+      tags: ['ai', 'longevity'],
+      body: {
+        type: 'object',
+        required: ['cv_text'],
+        properties: {
+          cv_text: { type: 'string' },
+          job_title: { type: 'string' },
+          industry: { type: 'string' },
+        },
+      },
+      response: {
+        200: { type: 'object' },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest<{ Body: { cv_text: string; job_title?: string; industry?: string } }>, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    const { cv_text, job_title, industry } = request.body;
+
+    if (!cv_text) {
+      return reply.status(400).send({ error: 'cv_text is required' });
+    }
+
+    try {
+      app.logger.info({ userId: session.user.id }, 'Analyzing career longevity');
+
+      const jobTitleText = job_title ? `Job Title (if provided): ${job_title}` : '';
+      const industryText = industry ? `Industry (if provided): ${industry}` : '';
+
+      const prompt = `You are a career longevity analyst specializing in AI automation risk and future job market trends. Analyze the following CV/career profile and provide a comprehensive assessment.
+
+CV Text: ${cv_text.substring(0, 2000)}
+${jobTitleText}
+${industryText}
+
+Analyze which specific tasks in this person's current role are most susceptible to automation, identify their transferable skills, and recommend specific roles with better longevity that leverage their existing experience.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "automation_risk": {
+    "score": <0-100 integer, higher = more at risk>,
+    "level": "<Low|Medium|High|Very High>",
+    "summary": "<2-3 sentence explanation of the risk level and key factors>"
+  },
+  "at_risk_skills": ["<skills/tasks most likely to be automated>"],
+  "future_proof_skills": ["<skills this person has that are hard to automate>"],
+  "longevity_score": <0-100 integer, higher = more future-proof>,
+  "industry_outlook": "<2-3 sentences on the industry's future with AI/automation trends>",
+  "recommended_pivot_roles": [
+    {
+      "title": "<role title>",
+      "reason": "<why this role suits them and has good longevity>",
+      "skill_overlap": "<Low|Medium|High>",
+      "longevity_score": <0-100>
+    }
+  ],
+  "upskill_recommendations": [
+    {
+      "skill": "<skill name>",
+      "reason": "<why this skill will be valuable>",
+      "priority": "<High|Medium|Low>"
+    }
+  ],
+  "bridge_plan": "<actionable paragraph on how to transition their current skills to more future-proof roles, with specific steps>"
+}
+
+Provide 3-5 recommended_pivot_roles and 4-6 upskill_recommendations. Be specific and tailored to their actual experience.`;
+
+      const longevitySchema = z.object({
+        automation_risk: z.object({
+          score: z.number().int().min(0).max(100),
+          level: z.enum(['Low', 'Medium', 'High', 'Very High']),
+          summary: z.string(),
+        }),
+        at_risk_skills: z.array(z.string()),
+        future_proof_skills: z.array(z.string()),
+        longevity_score: z.number().int().min(0).max(100),
+        industry_outlook: z.string(),
+        recommended_pivot_roles: z.array(z.object({
+          title: z.string(),
+          reason: z.string(),
+          skill_overlap: z.enum(['Low', 'Medium', 'High']),
+          longevity_score: z.number().int().min(0).max(100),
+        })),
+        upskill_recommendations: z.array(z.object({
+          skill: z.string(),
+          reason: z.string(),
+          priority: z.enum(['High', 'Medium', 'Low']),
+        })),
+        bridge_plan: z.string(),
+      });
+
+      const { object } = await generateObject({
+        model: gateway('openai/gpt-4o'),
+        schema: longevitySchema,
+        prompt,
+      });
+
+      app.logger.info({ userId: session.user.id, longevityScore: object.longevity_score }, 'Career longevity analysis completed');
+      return object;
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to analyze career longevity');
+      return reply.status(500).send({ error: 'Failed to analyze career longevity' });
     }
   });
 }
