@@ -25,9 +25,10 @@ interface FeatureRowProps {
   title: string;
   description: string;
   delay: number;
+  iconBg: string;
 }
 
-function FeatureRow({ icon, title, description, delay }: FeatureRowProps) {
+function FeatureRow({ icon, title, description, delay, iconBg }: FeatureRowProps) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateX = useRef(new Animated.Value(-16)).current;
 
@@ -48,10 +49,24 @@ function FeatureRow({ icon, title, description, delay }: FeatureRowProps) {
     ]).start();
   }, []);
 
+  const badgeStyle = {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: iconBg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexShrink: 0 as const,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  };
+
   return (
     <Animated.View style={[styles.featureRow, { opacity, transform: [{ translateX }] }]}>
-      <View style={styles.featureIconWrap}>
-        <IconSymbol name={icon as any} size={22} color={AMBER} />
+      <View style={badgeStyle}>
+        <IconSymbol name={icon as any} size={26} color={WHITE} />
       </View>
       <View style={styles.featureText}>
         <Text style={styles.featureTitle}>{title}</Text>
@@ -124,6 +139,7 @@ export default function WelcomeScreen() {
           title="Smart CV Analysis"
           description="Upload your CV and get an instant AI-powered score and improvement tips"
           delay={200}
+          iconBg="#1E40AF"
         />
         <View style={styles.featureDivider} />
         <FeatureRow
@@ -131,6 +147,7 @@ export default function WelcomeScreen() {
           title="Matched Job Search"
           description="Find roles that fit your skills with AI match percentages"
           delay={320}
+          iconBg="#B45309"
         />
         <View style={styles.featureDivider} />
         <FeatureRow
@@ -138,6 +155,7 @@ export default function WelcomeScreen() {
           title="AI Cover Letters"
           description="Generate tailored cover letters for any job in seconds"
           delay={440}
+          iconBg="#065F46"
         />
       </View>
 
