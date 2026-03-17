@@ -43,6 +43,9 @@ export default function AuthScreen() {
   const cardScale = useRef(new Animated.Value(0.85)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
+  // Tracks whether the last auth action was a sign-up so the useEffect
+  // does not navigate away before the success modal is shown.
+  const isSignUpFlow = useRef(false);
 
   const anySubmitting = submittingEmail || submittingApple || submittingGoogle;
 
@@ -69,8 +72,8 @@ export default function AuthScreen() {
   };
 
   useEffect(() => {
-    if (user && !showSuccessModal) {
-      console.log('[Auth] User authenticated, checking onboarding status');
+    if (user && !isSignUpFlow.current) {
+      console.log('[Auth] User authenticated via sign-in, navigating');
       handlePostAuthNavigation();
     }
   }, [user]);
@@ -116,8 +119,10 @@ export default function AuthScreen() {
     console.log(`[Auth] Attempting ${mode} with email: ${email}`);
     try {
       if (mode === 'signin') {
+        isSignUpFlow.current = false;
         await signInWithEmail(email.trim(), password);
       } else {
+        isSignUpFlow.current = true;
         await signUpWithEmail(email.trim(), password, name.trim());
         openSuccessModal();
       }
