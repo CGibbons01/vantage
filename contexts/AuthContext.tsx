@@ -119,12 +119,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    await authClient.signIn.email({ email, password });
+    console.log('[AuthContext] signInWithEmail called for:', email);
+    const { data, error } = await authClient.signIn.email({ email, password });
+    console.log('[AuthContext] signIn.email response — data:', data, 'error:', error);
+    if (error) {
+      throw new Error(error.message || 'Sign in failed. Please check your credentials.');
+    }
     await fetchUser();
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
-    await authClient.signUp.email({ email, password, name });
+    console.log('[AuthContext] signUpWithEmail called for:', email);
+    const { data, error } = await authClient.signUp.email({ email, password, name });
+    console.log('[AuthContext] signUp.email response — data:', data, 'error:', error);
+    if (error) {
+      throw new Error(error.message || 'Sign up failed. Please try again.');
+    }
     await fetchUser();
   };
 
