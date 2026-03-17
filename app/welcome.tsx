@@ -11,7 +11,6 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { IconSymbol } from '@/components/IconSymbol';
-import { useAuth } from '@/contexts/AuthContext';
 
 const NAVY = '#0F2B5B';
 const CARD = '#1A3A6B';
@@ -65,18 +64,9 @@ function FeatureRow({ icon, title, description, delay }: FeatureRowProps) {
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, loading } = useAuth();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const heroSlide = useRef(new Animated.Value(20)).current;
-
-  // If already signed in, skip welcome and go straight to the app
-  useEffect(() => {
-    if (!loading && user) {
-      console.log('[Welcome] User already signed in — redirecting to /(tabs)');
-      router.replace('/(tabs)');
-    }
-  }, [user, loading]);
 
   useEffect(() => {
     Animated.parallel([

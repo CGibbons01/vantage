@@ -11,7 +11,6 @@ import {
   Platform,
   Image,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Lock, User, Eye, EyeOff, Chrome } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -79,8 +78,7 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting sign-in with email:', email);
     try {
       await signInWithEmail(email.trim(), password);
-      console.log('[Auth] Sign-in success — navigating to main app');
-      router.replace('/(tabs)');
+      console.log('[Auth] Sign-in success — AuthGuard will handle navigation');
     } catch (e: any) {
       console.error('[Auth] Sign-in error:', e);
       setError(e?.message || 'Sign in failed. Please check your credentials.');
@@ -95,8 +93,7 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting Apple sign in');
     try {
       await signInWithApple();
-      console.log('[Auth] Apple sign-in complete — navigating to main app');
-      router.replace('/(tabs)');
+      console.log('[Auth] Apple sign-in complete — AuthGuard will handle navigation');
     } catch (e: any) {
       console.error('[Auth] Apple sign in error:', e);
       if (e?.message !== 'Authentication cancelled') {
@@ -113,8 +110,7 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting Google sign in');
     try {
       await signInWithGoogle();
-      console.log('[Auth] Google sign-in complete — navigating to main app');
-      router.replace('/(tabs)');
+      console.log('[Auth] Google sign-in complete — AuthGuard will handle navigation');
     } catch (e: any) {
       console.error('[Auth] Google sign in error:', e);
       if (e?.message !== 'Authentication cancelled') {
