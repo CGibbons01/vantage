@@ -84,13 +84,8 @@ export default function WelcomeScreen() {
   }, []);
 
   const handleGetStarted = () => {
-    console.log('[Welcome] Get Started pressed — navigating to auth-screen signup');
-    router.push('/auth-screen?mode=signup');
-  };
-
-  const handleSignIn = () => {
-    console.log('[Welcome] Sign In pressed — navigating to auth-screen signin');
-    router.push('/auth-screen?mode=signin');
+    console.log('[Welcome] Get Started pressed — navigating to auth-screen');
+    router.push('/auth-screen');
   };
 
   const handlePrivacy = () => {
@@ -156,17 +151,6 @@ export default function WelcomeScreen() {
         >
           <Text style={styles.ctaButtonText}>Get Started</Text>
         </AnimatedPressable>
-
-        <View style={styles.signInRow}>
-          <Text style={styles.signInPrompt}>Already have an account?</Text>
-          <AnimatedPressable
-            onPress={handleSignIn}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in to your account"
-          >
-            <Text style={styles.signInLink}> Sign In</Text>
-          </AnimatedPressable>
-        </View>
 
         <View style={styles.privacyRow}>
           <Text style={styles.privacyText}>By continuing you agree to our </Text>

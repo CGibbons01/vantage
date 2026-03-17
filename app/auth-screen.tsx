@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
   Modal,
   Animated,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Lock, User, Eye, EyeOff, Chrome, Check } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,11 +23,8 @@ import { isOnboardingComplete } from '@/utils/onboardingStorage';
 export default function AuthScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ mode?: string }>();
-  const { user, loading, signInWithEmail, signUpWithEmail, signInWithApple, signInWithGoogle } = useAuth();
+  const { loading, signUpWithEmail, signInWithApple, signInWithGoogle } = useAuth();
 
-  const initialMode = params.mode === 'signup' ? 'signup' : 'signin';
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -43,9 +39,6 @@ export default function AuthScreen() {
   const cardScale = useRef(new Animated.Value(0.85)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
-  // Tracks whether the last auth action was a sign-up so the useEffect
-  // does not navigate away before the success modal is shown.
-  const isSignUpFlow = useRef(false);
 
   const anySubmitting = submittingEmail || submittingApple || submittingGoogle;
 
@@ -71,13 +64,6 @@ export default function AuthScreen() {
     handlePostAuthNavigation();
   };
 
-  useEffect(() => {
-    if (user && !isSignUpFlow.current) {
-      console.log('[Auth] User authenticated via sign-in, navigating');
-      handlePostAuthNavigation();
-    }
-  }, [user]);
-
   const handlePostAuthNavigation = async () => {
     try {
       const onboardingDone = await isOnboardingComplete();
@@ -95,52 +81,27 @@ export default function AuthScreen() {
     }
   };
 
-  const switchMode = (next: 'signin' | 'signup') => {
-    console.log(`[Auth] Switching mode to ${next}`);
-    setMode(next);
-    setName('');
-    setEmail('');
-    setPassword('');
-    setShowPassword(false);
-    setError('');
-  };
-
-  const handleEmailAuth = async () => {
+  const handleCreateAccount = async () => {
+    if (!name.trim()) {
+      setError('Please enter your name.');
+      return;
+    }
     if (!email.trim() || !password.trim()) {
       setError('Please fill in all fields.');
       return;
     }
-    if (mode === 'signup' && !name.trim()) {
-      setError('Please enter your name.');
-      return;
-    }
     setError('');
     setSubmittingEmail(true);
-    console.log(`[Auth] Attempting ${mode} with email: ${email}`);
+    console.log('[Auth] Attempting sign-up with email:', email);
     try {
-      if (mode === 'signin') {
-        isSignUpFlow.current = false;
-        await signInWithEmail(email.trim(), password);
-      } else {
-        isSignUpFlow.current = true;
-        await signUpWithEmail(email.trim(), password, name.trim());
-        openSuccessModal();
-      }
+      await signUpWithEmail(email.trim(), password, name.trim());
+      openSuccessModal();
     } catch (e: any) {
-      console.error('[Auth] Email auth error:', e);
-      setError(e?.message || 'Authentication failed. Please try again.');
+      console.error('[Auth] Sign-up error:', e);
+      setError(e?.message || 'Account creation failed. Please try again.');
     } finally {
       setSubmittingEmail(false);
     }
-  };
-
-  const handleForgotPassword = () => {
-    console.log('[Auth] Forgot password pressed');
-    Alert.alert(
-      'Reset Password',
-      'Please contact support at support@vantageai.com to reset your password.',
-      [{ text: 'OK' }]
-    );
   };
 
   const handleApple = async () => {
@@ -149,6 +110,7 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting Apple sign in');
     try {
       await signInWithApple();
+      handlePostAuthNavigation();
     } catch (e: any) {
       console.error('[Auth] Apple sign in error:', e);
       if (e?.message !== 'Authentication cancelled') {
@@ -165,6 +127,7 @@ export default function AuthScreen() {
     console.log('[Auth] Attempting Google sign in');
     try {
       await signInWithGoogle();
+      handlePostAuthNavigation();
     } catch (e: any) {
       console.error('[Auth] Google sign in error:', e);
       if (e?.message !== 'Authentication cancelled') {
@@ -182,8 +145,6 @@ export default function AuthScreen() {
       </View>
     );
   }
-
-  const primaryBtnLabel = mode === 'signin' ? 'Sign In' : 'Create Account';
 
   return (
     <KeyboardAvoidingView
@@ -206,44 +167,26 @@ export default function AuthScreen() {
           <Text style={styles.brandSubtitle}>Your AI-powered career companion</Text>
         </View>
 
-        {/* Mode Toggle */}
-        <View style={styles.modeToggle}>
-          <TouchableOpacity
-            style={[styles.modeBtn, mode === 'signin' && styles.modeBtnActive]}
-            onPress={() => switchMode('signin')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.modeBtnText, mode === 'signin' && styles.modeBtnTextActive]}>
-              Sign In
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
-            onPress={() => switchMode('signup')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]}>
-              Create Account
-            </Text>
-          </TouchableOpacity>
+        {/* Heading */}
+        <View style={styles.headingSection}>
+          <Text style={styles.headingTitle}>Create Account</Text>
+          <Text style={styles.headingSubtitle}>Sign up to get started</Text>
         </View>
 
         {/* Form */}
         <View style={styles.form}>
-          {mode === 'signup' && (
-            <View style={styles.inputWrapper}>
-              <User size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                placeholderTextColor={COLORS.textMuted}
-                value={name}
-                onChangeText={setName}
-                autoCapitalize="words"
-                returnKeyType="next"
-              />
-            </View>
-          )}
+          <View style={styles.inputWrapper}>
+            <User size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Full Name"
+              placeholderTextColor={COLORS.textMuted}
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="words"
+              returnKeyType="next"
+            />
+          </View>
 
           <View style={styles.inputWrapper}>
             <Mail size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
@@ -270,21 +213,21 @@ export default function AuthScreen() {
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               returnKeyType="done"
-              onSubmitEditing={handleEmailAuth}
+              onSubmitEditing={handleCreateAccount}
             />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                console.log('[Auth] Toggle password visibility');
+                setShowPassword(!showPassword);
+              }}
+              style={styles.eyeBtn}
+            >
               {showPassword
                 ? <EyeOff size={18} color={COLORS.textSecondary} />
                 : <Eye size={18} color={COLORS.textSecondary} />
               }
             </TouchableOpacity>
           </View>
-
-          {mode === 'signin' && (
-            <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBtn} activeOpacity={0.7}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </TouchableOpacity>
-          )}
 
           {error ? (
             <View style={styles.errorBox}>
@@ -293,14 +236,14 @@ export default function AuthScreen() {
           ) : null}
 
           <TouchableOpacity
-            style={[styles.primaryBtn, (submittingEmail || anySubmitting) && styles.primaryBtnDisabled]}
-            onPress={handleEmailAuth}
+            style={[styles.primaryBtn, anySubmitting && styles.primaryBtnDisabled]}
+            onPress={handleCreateAccount}
             disabled={anySubmitting}
             activeOpacity={0.85}
           >
             {submittingEmail
               ? <ActivityIndicator color="#000" size="small" />
-              : <Text style={styles.primaryBtnText}>{primaryBtnLabel}</Text>
+              : <Text style={styles.primaryBtnText}>Create Account</Text>
             }
           </TouchableOpacity>
         </View>
@@ -411,7 +354,7 @@ const styles = StyleSheet.create({
   },
   brandSection: {
     alignItems: 'center',
-    marginBottom: 36,
+    marginBottom: 32,
   },
   logoImage: {
     width: 70,
@@ -430,31 +373,19 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 6,
   },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 4,
+  headingSection: {
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 9,
-    alignItems: 'center',
+  headingTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: -0.3,
   },
-  modeBtnActive: {
-    backgroundColor: COLORS.accent,
-  },
-  modeBtnText: {
+  headingSubtitle: {
     fontSize: 14,
-    fontWeight: '600',
     color: COLORS.textSecondary,
-  },
-  modeBtnTextActive: {
-    color: '#000',
+    marginTop: 4,
   },
   form: {
     gap: 12,
@@ -479,15 +410,6 @@ const styles = StyleSheet.create({
   },
   eyeBtn: {
     padding: 4,
-  },
-  forgotBtn: {
-    alignSelf: 'flex-end',
-    marginTop: -4,
-  },
-  forgotText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.accent,
   },
   errorBox: {
     backgroundColor: COLORS.errorMuted,
