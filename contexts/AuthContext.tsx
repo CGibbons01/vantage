@@ -135,6 +135,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       throw new Error(error.message || 'Sign up failed. Please try again.');
     }
+    // Immediately sign in after signup so the session is established right away.
+    // Better Auth does not always auto-create a session on signup.
+    console.log('[AuthContext] signUpWithEmail — auto signing in after signup');
+    const { data: signInData, error: signInError } = await authClient.signIn.email({ email, password });
+    console.log('[AuthContext] auto signIn after signup — data:', signInData, 'error:', signInError);
+    if (signInError) {
+      // Signup succeeded but auto-login failed — still fetch session in case it was set
+      console.warn('[AuthContext] auto sign-in after signup failed:', signInError.message);
+    }
     await fetchUser();
   };
 
