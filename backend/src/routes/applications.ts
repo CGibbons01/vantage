@@ -3,6 +3,7 @@ import { eq, desc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
+import { createBearerAuth } from '../auth-utils.js';
 
 interface CreateApplicationBody {
   job_id: string;
@@ -19,7 +20,7 @@ interface UpdateApplicationBody {
 }
 
 export function registerApplicationRoutes(app: App, fastify: FastifyInstance) {
-  const requireAuth = app.requireAuth();
+  const requireAuth = createBearerAuth(app);
 
   // GET /api/applications
   fastify.get('/api/applications', {

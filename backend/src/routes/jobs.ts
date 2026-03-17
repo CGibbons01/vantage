@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import type { App } from '../index.js';
+import { createBearerAuth } from '../auth-utils.js';
 
 interface JobSearchQuerystring {
   keywords: string;
@@ -41,7 +42,7 @@ interface TransformedJob {
 }
 
 export function registerJobRoutes(app: App, fastify: FastifyInstance) {
-  const requireAuth = app.requireAuth();
+  const requireAuth = createBearerAuth(app);
 
   // GET /api/jobs/search
   fastify.get('/api/jobs/search', {

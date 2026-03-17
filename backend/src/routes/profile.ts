@@ -7,6 +7,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
+import { createBearerAuth } from '../auth-utils.js';
 
 const cvAnalysisSchema = z.object({
   name: z.string(),
@@ -47,7 +48,7 @@ interface ProfileUpdateBody {
 }
 
 export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
-  const requireAuth = app.requireAuth();
+  const requireAuth = createBearerAuth(app);
 
   // GET /api/profile
   fastify.get('/api/profile', {

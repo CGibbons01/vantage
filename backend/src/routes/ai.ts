@@ -6,6 +6,7 @@ import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
+import { createBearerAuth } from '../auth-utils.js';
 
 const cvGenerateBodySchema = z.object({
   name: z.string(),
@@ -98,7 +99,7 @@ const cvScoreResponseSchema = z.object({
 });
 
 export function registerAIRoutes(app: App, fastify: FastifyInstance) {
-  const requireAuth = app.requireAuth();
+  const requireAuth = createBearerAuth(app);
 
   // POST /api/cv/generate
   fastify.post('/api/cv/generate', {
