@@ -8,12 +8,14 @@ import {
   ActivityIndicator,
   Alert,
   Clipboard,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FileText, Copy, CheckCircle, ChevronDown, ChevronUp, X } from 'lucide-react-native';
+import { FileText, Copy, CheckCircle, ChevronDown, ChevronUp, X, Download, Upload } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { authenticatedPost } from '@/utils/api';
+import { authenticatedPost, getBearerToken, BACKEND_URL } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
@@ -47,6 +49,18 @@ interface ImproveResult {
   suggestions: string[];
   score_before: number;
   score_after: number;
+}
+
+interface ParseResult {
+  raw_text: string;
+  parsed?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    job_title?: string;
+    skills?: string[];
+    summary?: string;
+  };
 }
 
 function SkillChip({ label, onRemove }: { label: string; onRemove: () => void }) {
@@ -95,6 +109,64 @@ function ScoreBar({ label, score, color }: { label: string; score: number; color
   );
 }
 
+async function downloadPdf(content: string, title: string, filename: string): Promise<void> {
+  console.log('[CVWriter] Download PDF pressed, title:', title);
+  const token = await getBearerToken();
+  if (!token) throw new Error('Not signed in');
+
+  const url = `${BACKEND_URL}/api/cv/export-pdf`;
+  console.log('[CVWriter] POST', url);
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ content, title }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error('[CVWriter] PDF export error:', response.status, text.slice(0, 200));
+    throw new Error(`Server error ${response.status}`);
+  }
+
+  console.log('[CVWriter] PDF response received, processing...');
+
+  if (Platform.OS === 'web') {
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+    console.log('[CVWriter] PDF download triggered on web');
+  } else {
+    const FileSystem = await import('expo-file-system');
+    const Sharing = await import('expo-sharing');
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    const fileUri = FileSystem.default.documentDirectory + filename;
+    await FileSystem.default.writeAsStringAsync(fileUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    console.log('[CVWriter] PDF written to:', fileUri);
+    const canShare = await Sharing.default.isAvailableAsync();
+    if (canShare) {
+      await Sharing.default.shareAsync(fileUri, { mimeType: 'application/pdf' });
+      console.log('[CVWriter] Share sheet opened');
+    } else {
+      Alert.alert('Saved', `PDF saved to: ${fileUri}`);
+    }
+  }
+}
+
 export default function CVWriterScreen() {
   const insets = useSafeAreaInsets();
   const { isSubscribed } = useSubscription();
@@ -112,6 +184,7 @@ export default function CVWriterScreen() {
   const [genResult, setGenResult] = useState<GenerateResult | null>(null);
   const [activeSection, setActiveSection] = useState<CVSection>('summary');
   const [genCopied, setGenCopied] = useState(false);
+  const [genDownloading, setGenDownloading] = useState(false);
 
   // Improve mode state
   const [impCV, setImpCV] = useState('');
@@ -120,7 +193,9 @@ export default function CVWriterScreen() {
   const [impLoading, setImpLoading] = useState(false);
   const [impResult, setImpResult] = useState<ImproveResult | null>(null);
   const [impCopied, setImpCopied] = useState(false);
+  const [impDownloading, setImpDownloading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   if (!isSubscribed) {
     return (
@@ -174,7 +249,6 @@ export default function CVWriterScreen() {
       });
       console.log('[CVWriter] CV generated successfully');
       setGenResult(result);
-      // Save to AsyncStorage for job matching
       if (result.cv_text) {
         await AsyncStorage.setItem(USER_CV_KEY, result.cv_text);
         console.log('[CVWriter] Saved generated CV to AsyncStorage');
@@ -215,6 +289,86 @@ export default function CVWriterScreen() {
     }
   };
 
+  const handleUploadFile = async () => {
+    console.log('[CVWriter] Upload CV file pressed');
+    let pickerResult: DocumentPicker.DocumentPickerResult | null = null;
+    try {
+      pickerResult = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
+        copyToCacheDirectory: true,
+      });
+    } catch (e: any) {
+      console.error('[CVWriter] Document picker error:', e);
+      Alert.alert('Error', 'Could not open file picker.');
+      return;
+    }
+
+    if (pickerResult.canceled) {
+      console.log('[CVWriter] File upload cancelled');
+      return;
+    }
+
+    const asset = pickerResult.assets[0];
+    if (!asset) return;
+
+    console.log('[CVWriter] File selected:', asset.name, 'size:', asset.size);
+    setUploadingFile(true);
+
+    try {
+      const token = await getBearerToken();
+      if (!token) throw new Error('Not signed in');
+
+      const formData = new FormData();
+      if (typeof document !== 'undefined') {
+        const blobResponse = await fetch(asset.uri);
+        if (!blobResponse.ok) throw new Error('Could not read file');
+        const blob = await blobResponse.blob();
+        formData.append('file', blob, asset.name || 'cv.pdf');
+        console.log('[CVWriter] Appended blob to FormData, size:', blob.size);
+      } else {
+        formData.append('file', {
+          uri: asset.uri,
+          name: asset.name || 'cv.pdf',
+          type: asset.mimeType || 'application/pdf',
+        } as any);
+        console.log('[CVWriter] Appended native file to FormData');
+      }
+
+      const parseUrl = `${BACKEND_URL}/api/cv/parse`;
+      console.log('[CVWriter] POST', parseUrl);
+      const response = await fetch(parseUrl, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[CVWriter] Parse error:', response.status, text.slice(0, 200));
+        throw new Error(`Server error ${response.status}`);
+      }
+
+      const data: ParseResult = await response.json();
+      console.log('[CVWriter] CV parsed successfully, raw_text length:', data.raw_text?.length);
+
+      if (data.raw_text) {
+        setImpCV(data.raw_text);
+      }
+      if (data.parsed?.name) setGenName(data.parsed.name);
+      if (data.parsed?.email) setGenEmail(data.parsed.email);
+
+      Alert.alert('CV Loaded', 'Your CV text has been extracted and filled in below.');
+    } catch (e: any) {
+      console.error('[CVWriter] File upload/parse error:', e);
+      Alert.alert('Upload Failed', e?.message || 'Could not parse your CV file.');
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
   const copyToClipboard = (text: string, type: 'gen' | 'imp') => {
     console.log('[CVWriter] Copy to clipboard pressed, type:', type);
     Clipboard.setString(text);
@@ -224,6 +378,32 @@ export default function CVWriterScreen() {
     } else {
       setImpCopied(true);
       setTimeout(() => setImpCopied(false), 2000);
+    }
+  };
+
+  const handleGenDownloadPdf = async () => {
+    if (!genResult?.cv_text) return;
+    setGenDownloading(true);
+    try {
+      await downloadPdf(genResult.cv_text, 'My CV', 'cv.pdf');
+    } catch (e: any) {
+      console.error('[CVWriter] Gen PDF download error:', e);
+      Alert.alert('Download Failed', e?.message || 'Could not generate PDF.');
+    } finally {
+      setGenDownloading(false);
+    }
+  };
+
+  const handleImpDownloadPdf = async () => {
+    if (!impResult?.improved_cv_text) return;
+    setImpDownloading(true);
+    try {
+      await downloadPdf(impResult.improved_cv_text, 'My CV', 'cv.pdf');
+    } catch (e: any) {
+      console.error('[CVWriter] Imp PDF download error:', e);
+      Alert.alert('Download Failed', e?.message || 'Could not generate PDF.');
+    } finally {
+      setImpDownloading(false);
     }
   };
 
@@ -353,18 +533,31 @@ export default function CVWriterScreen() {
               <View style={styles.resultCard}>
                 <View style={styles.resultHeader}>
                   <Text style={styles.resultTitle}>Your Generated CV</Text>
-                  <AnimatedPressable
-                    style={[styles.copyBtn, genCopied && styles.copyBtnSuccess]}
-                    onPress={() => copyToClipboard(genResult.cv_text, 'gen')}
-                  >
-                    {genCopied
-                      ? <CheckCircle size={14} color={COLORS.success} />
-                      : <Copy size={14} color={COLORS.accent} />
-                    }
-                    <Text style={[styles.copyBtnText, genCopied && { color: COLORS.success }]}>
-                      {genCopied ? 'Copied!' : 'Copy'}
-                    </Text>
-                  </AnimatedPressable>
+                  <View style={styles.actionBtnsRow}>
+                    <AnimatedPressable
+                      style={[styles.copyBtn, genDownloading && styles.copyBtnDisabled]}
+                      onPress={handleGenDownloadPdf}
+                      disabled={genDownloading}
+                    >
+                      {genDownloading
+                        ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
+                        : <Download size={14} color={COLORS.accent} />
+                      }
+                      <Text style={styles.copyBtnText}>PDF</Text>
+                    </AnimatedPressable>
+                    <AnimatedPressable
+                      style={[styles.copyBtn, genCopied && styles.copyBtnSuccess]}
+                      onPress={() => copyToClipboard(genResult.cv_text, 'gen')}
+                    >
+                      {genCopied
+                        ? <CheckCircle size={14} color={COLORS.success} />
+                        : <Copy size={14} color={COLORS.accent} />
+                      }
+                      <Text style={[styles.copyBtnText, genCopied && { color: COLORS.success }]}>
+                        {genCopied ? 'Copied!' : 'Copy'}
+                      </Text>
+                    </AnimatedPressable>
+                  </View>
                 </View>
 
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionTabsScroll}>
@@ -390,10 +583,29 @@ export default function CVWriterScreen() {
           </>
         ) : (
           <>
+            {/* Upload CV File button */}
+            <AnimatedPressable
+              style={[styles.uploadFileBtn, uploadingFile && styles.primaryBtnDisabled]}
+              onPress={handleUploadFile}
+              disabled={uploadingFile}
+            >
+              {uploadingFile ? (
+                <>
+                  <ActivityIndicator color={COLORS.accent} size="small" />
+                  <Text style={styles.uploadFileBtnText}>Parsing CV…</Text>
+                </>
+              ) : (
+                <>
+                  <Upload size={16} color={COLORS.accent} />
+                  <Text style={styles.uploadFileBtnText}>Upload CV File</Text>
+                </>
+              )}
+            </AnimatedPressable>
+
             <Text style={styles.fieldLabel}>Paste Your CV</Text>
             <TextInput
               style={[styles.input, styles.textareaLarge]}
-              placeholder="Paste your CV here..."
+              placeholder="Paste your CV here or upload a file above..."
               placeholderTextColor={COLORS.textMuted}
               value={impCV}
               onChangeText={setImpCV}
@@ -480,18 +692,31 @@ export default function CVWriterScreen() {
                 <View style={styles.resultCard}>
                   <View style={styles.resultHeader}>
                     <Text style={styles.resultTitle}>Improved CV</Text>
-                    <AnimatedPressable
-                      style={[styles.copyBtn, impCopied && styles.copyBtnSuccess]}
-                      onPress={() => copyToClipboard(impResult.improved_cv_text, 'imp')}
-                    >
-                      {impCopied
-                        ? <CheckCircle size={14} color={COLORS.success} />
-                        : <Copy size={14} color={COLORS.accent} />
-                      }
-                      <Text style={[styles.copyBtnText, impCopied && { color: COLORS.success }]}>
-                        {impCopied ? 'Copied!' : 'Copy'}
-                      </Text>
-                    </AnimatedPressable>
+                    <View style={styles.actionBtnsRow}>
+                      <AnimatedPressable
+                        style={[styles.copyBtn, impDownloading && styles.copyBtnDisabled]}
+                        onPress={handleImpDownloadPdf}
+                        disabled={impDownloading}
+                      >
+                        {impDownloading
+                          ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
+                          : <Download size={14} color={COLORS.accent} />
+                        }
+                        <Text style={styles.copyBtnText}>PDF</Text>
+                      </AnimatedPressable>
+                      <AnimatedPressable
+                        style={[styles.copyBtn, impCopied && styles.copyBtnSuccess]}
+                        onPress={() => copyToClipboard(impResult.improved_cv_text, 'imp')}
+                      >
+                        {impCopied
+                          ? <CheckCircle size={14} color={COLORS.success} />
+                          : <Copy size={14} color={COLORS.accent} />
+                        }
+                        <Text style={[styles.copyBtnText, impCopied && { color: COLORS.success }]}>
+                          {impCopied ? 'Copied!' : 'Copy'}
+                        </Text>
+                      </AnimatedPressable>
+                    </View>
                   </View>
                   <View style={styles.sectionContent}>
                     <Text style={styles.sectionContentText} selectable>{impResult.improved_cv_text}</Text>
@@ -613,6 +838,20 @@ const styles = StyleSheet.create({
   },
   primaryBtnDisabled: { opacity: 0.6 },
   primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
+  uploadFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    borderStyle: 'dashed',
+  },
+  uploadFileBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
   resultCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
@@ -629,6 +868,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   resultTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  actionBtnsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   copyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -640,6 +880,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(245,158,11,0.25)',
   },
+  copyBtnDisabled: { opacity: 0.5 },
   copyBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
   copyBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
   sectionTabsScroll: { marginBottom: 12 },

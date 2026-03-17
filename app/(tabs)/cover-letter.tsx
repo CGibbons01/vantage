@@ -8,11 +8,12 @@ import {
   ActivityIndicator,
   Alert,
   Clipboard,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Mail, Copy, CheckCircle } from 'lucide-react-native';
+import { Mail, Copy, CheckCircle, Download } from 'lucide-react-native';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { authenticatedPost } from '@/utils/api';
+import { authenticatedPost, getBearerToken, BACKEND_URL } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
@@ -43,6 +44,7 @@ export default function CoverLetterScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CoverLetterResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   if (!isSubscribed) {
     return (
@@ -88,6 +90,73 @@ export default function CoverLetterScreen() {
     Clipboard.setString(result.cover_letter);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!result?.cover_letter) return;
+    console.log('[CoverLetter] Download PDF pressed');
+    setDownloading(true);
+    try {
+      const token = await getBearerToken();
+      if (!token) throw new Error('Not signed in');
+
+      const url = `${BACKEND_URL}/api/cover-letter/export-pdf`;
+      console.log('[CoverLetter] POST', url);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: result.cover_letter, title: 'Cover Letter' }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[CoverLetter] PDF export error:', response.status, text.slice(0, 200));
+        throw new Error(`Server error ${response.status}`);
+      }
+
+      console.log('[CoverLetter] PDF response received, processing...');
+
+      if (Platform.OS === 'web') {
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = 'cover-letter.pdf';
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+        console.log('[CoverLetter] PDF download triggered on web');
+      } else {
+        const FileSystem = await import('expo-file-system');
+        const Sharing = await import('expo-sharing');
+        const arrayBuffer = await response.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        const fileUri = FileSystem.default.documentDirectory + 'cover-letter.pdf';
+        await FileSystem.default.writeAsStringAsync(fileUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        console.log('[CoverLetter] PDF written to:', fileUri);
+        const canShare = await Sharing.default.isAvailableAsync();
+        if (canShare) {
+          await Sharing.default.shareAsync(fileUri, { mimeType: 'application/pdf' });
+          console.log('[CoverLetter] Share sheet opened');
+        } else {
+          Alert.alert('Saved', `PDF saved to: ${fileUri}`);
+        }
+      }
+    } catch (e: any) {
+      console.error('[CoverLetter] PDF download error:', e);
+      Alert.alert('Download Failed', e?.message || 'Could not generate PDF.');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const wordCount = result ? Number(result.word_count) : 0;
@@ -195,14 +264,25 @@ export default function CoverLetterScreen() {
                   <Text style={styles.wordCountText}>{wordCount} words</Text>
                 </View>
                 <AnimatedPressable
-                  style={[styles.copyBtn, copied && styles.copyBtnSuccess]}
+                  style={[styles.actionBtn, downloading && styles.actionBtnDisabled]}
+                  onPress={handleDownloadPdf}
+                  disabled={downloading}
+                >
+                  {downloading
+                    ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
+                    : <Download size={14} color={COLORS.accent} />
+                  }
+                  <Text style={styles.actionBtnText}>PDF</Text>
+                </AnimatedPressable>
+                <AnimatedPressable
+                  style={[styles.actionBtn, copied && styles.actionBtnSuccess]}
                   onPress={handleCopy}
                 >
                   {copied
                     ? <CheckCircle size={14} color={COLORS.success} />
                     : <Copy size={14} color={COLORS.accent} />
                   }
-                  <Text style={[styles.copyBtnText, copied && { color: COLORS.success }]}>
+                  <Text style={[styles.actionBtnText, copied && { color: COLORS.success }]}>
                     {copied ? 'Copied!' : 'Copy'}
                   </Text>
                 </AnimatedPressable>
@@ -307,7 +387,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   wordCountText: { fontSize: 11, fontWeight: '600', color: COLORS.info },
-  copyBtn: {
+  actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -318,8 +398,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(245,158,11,0.25)',
   },
-  copyBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
-  copyBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
+  actionBtnDisabled: { opacity: 0.5 },
+  actionBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
+  actionBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
   letterContent: {
     backgroundColor: COLORS.surfaceAlt,
     borderRadius: 10,
