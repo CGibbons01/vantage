@@ -40,6 +40,10 @@ function AuthGuard() {
     if (!user && !isAuthRoute) {
       console.log("[AuthGuard] Unauthenticated user, redirecting to /welcome");
       router.replace("/welcome");
+    } else if (user && isAuthRoute) {
+      // Signed-in users should never see auth/welcome/onboarding screens
+      console.log("[AuthGuard] Authenticated user on auth route, redirecting to /(tabs)");
+      router.replace("/(tabs)");
     }
   }, [user, loading, pathname]);
 
