@@ -1,12 +1,12 @@
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
-import { Stack, useRouter, usePathname } from "expo-router";
+import { Redirect, Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useColorScheme, Alert } from "react-native";
+import { useColorScheme, Alert, View, ActivityIndicator } from "react-native";
 import { useNetworkState } from "expo-network";
 import {
   DarkTheme,
@@ -22,31 +22,33 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 
 SplashScreen.preventAutoHideAsync();
 
-export const unstable_settings = {
-  initialRouteName: "(tabs)",
-};
-
 const AUTH_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/paywall", "/onboarding", "/welcome", "/privacy"];
 
-function AuthGuard() {
+function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  const router = useRouter();
   const pathname = usePathname();
 
-  useEffect(() => {
-    if (loading) return;
-    const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
-    if (!user && !isAuthRoute) {
-      console.log("[AuthGuard] Unauthenticated user, redirecting to /welcome");
-      router.replace("/welcome");
-    } else if (user && isAuthRoute) {
-      // Signed-in users should never see auth/welcome/onboarding screens
-      console.log("[AuthGuard] Authenticated user on auth route, redirecting to /(tabs)");
-      router.replace("/(tabs)");
-    }
-  }, [user, loading, pathname]);
+  const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
 
-  return null;
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>
+        <ActivityIndicator size="large" color="#fff" />
+      </View>
+    );
+  }
+
+  if (!user && !isAuthRoute) {
+    console.log("[AuthGuard] Unauthenticated user, redirecting to /welcome");
+    return <Redirect href="/welcome" />;
+  }
+
+  if (user && isAuthRoute) {
+    console.log("[AuthGuard] Authenticated user on auth route, redirecting to /(tabs)");
+    return <Redirect href="/(tabs)" />;
+  }
+
+  return <>{children}</>;
 }
 
 
@@ -108,7 +110,7 @@ export default function RootLayout() {
               <WidgetProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <StatusBar style="light" animated />
-                  <AuthGuard />
+                  <AuthGuard>
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                     <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
@@ -158,6 +160,7 @@ export default function RootLayout() {
                       }}
                     />
                   </Stack>
+                  </AuthGuard>
                   <SystemBars style="light" />
                 </GestureHandlerRootView>
               </WidgetProvider>
