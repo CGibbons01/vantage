@@ -1,4 +1,4 @@
-import { createApplication } from "@specific-dev/framework";
+import { createApplication, createAuthMiddleware } from "@specific-dev/framework";
 import * as appSchema from './db/schema/schema.js';
 import * as authSchema from './db/schema/auth-schema.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -19,7 +19,31 @@ export const app = await createApplication(schema);
 export type App = typeof app;
 
 // Set up authentication with email/password and OAuth providers
-app.withAuth();
+// Allow ALL email domains - accept any valid email format without domain restrictions
+const authBeforeHook = createAuthMiddleware(async (ctx) => {
+  // For sign-up and sign-in, validate email format only - no domain restrictions
+  if ((ctx.path === '/sign-up/email' || ctx.path === '/sign-in/email')) {
+    const body = ctx.body as Record<string, unknown> | undefined;
+    const email = body?.email as string | undefined;
+    if (email) {
+      const emailTrimmed = email.trim();
+      // Permissive regex: match any valid email format
+      // Pattern: something@something.something (no domain restrictions)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(emailTrimmed)) {
+        throw new Error('Invalid email format');
+      }
+      // Allow the email through regardless of domain (yahoo.com, gmail.com, ymail.com, rocketmail.com, etc.)
+    }
+  }
+  return ctx;
+});
+
+app.withAuth({
+  hooks: {
+    before: authBeforeHook,
+  },
+});
 
 // Register routes - add your route modules here
 // IMPORTANT: Always use registration functions to avoid circular dependency issues
