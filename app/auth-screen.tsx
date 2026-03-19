@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Lock, User, Eye, EyeOff, Chrome } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS } from '@/constants/theme';
 
