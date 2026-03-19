@@ -229,6 +229,115 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 400);
   });
 
+  // Application Status Update endpoint
+  test("Update application status", async () => {
+    // Create an application first
+    const createRes = await authenticatedApi("/api/applications", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: "job-status-test",
+        job_title: "Developer",
+        company: "Status Test Corp",
+        location: "Remote",
+        job_url: "https://example.com/jobs/status",
+      }),
+    });
+    const appId = (await createRes.json()).id;
+
+    const res = await authenticatedApi(`/api/applications/${appId}/status`, authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "interviewing",
+      }),
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.status).toBe("interviewing");
+
+    // Clean up
+    await authenticatedApi(`/api/applications/${appId}`, authToken, {
+      method: "DELETE",
+    });
+  });
+
+  test("Update application status - missing status field", async () => {
+    // Create an application first
+    const createRes = await authenticatedApi("/api/applications", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: "job-status-missing",
+        job_title: "Developer",
+        company: "Missing Field Corp",
+        location: "Remote",
+        job_url: "https://example.com/jobs/missing",
+      }),
+    });
+    const appId = (await createRes.json()).id;
+
+    const res = await authenticatedApi(`/api/applications/${appId}/status`, authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    await expectStatus(res, 400);
+
+    // Clean up
+    await authenticatedApi(`/api/applications/${appId}`, authToken, {
+      method: "DELETE",
+    });
+  });
+
+  test("Update application status - not found", async () => {
+    const res = await authenticatedApi("/api/applications/00000000-0000-0000-0000-000000000000/status", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
+    });
+    await expectStatus(res, 404);
+  });
+
+  test("Update application status - forbidden (not owned by user)", async () => {
+    // Create an application with first user
+    const createRes = await authenticatedApi("/api/applications", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: "job-status-forbidden",
+        job_title: "Developer",
+        company: "Forbidden Corp",
+        location: "Remote",
+        job_url: "https://example.com/jobs/forbidden",
+      }),
+    });
+    const appId = (await createRes.json()).id;
+
+    // Try to update with second user
+    const { token: token2 } = await signUpTestUser();
+    const res = await authenticatedApi(`/api/applications/${appId}/status`, token2, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
+    });
+    await expectStatus(res, 403);
+
+    // Clean up: delete with correct user
+    await authenticatedApi(`/api/applications/${appId}`, authToken, {
+      method: "DELETE",
+    });
+  });
+
+  test("Update application status - invalid UUID format", async () => {
+    const res = await authenticatedApi("/api/applications/invalid-uuid/status", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
+    });
+    await expectStatus(res, 400);
+  });
+
   // CV Generation AI endpoint
   test("Generate CV", async () => {
     const res = await authenticatedApi("/api/cv/generate", authToken, {
@@ -565,6 +674,15 @@ describe("API Integration Tests", () => {
   test("Delete application without auth", async () => {
     const res = await api("/api/applications/00000000-0000-0000-0000-000000000000", {
       method: "DELETE",
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Update application status without auth", async () => {
+    const res = await api("/api/applications/00000000-0000-0000-0000-000000000000/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
     });
     await expectStatus(res, 401);
   });

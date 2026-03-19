@@ -265,4 +265,88 @@ export function registerApplicationRoutes(app: App, fastify: FastifyInstance) {
       throw error;
     }
   });
+
+  // POST /api/applications/:id/status
+  fastify.post('/api/applications/:id/status', {
+    schema: {
+      description: 'Update application status',
+      tags: ['applications'],
+      params: {
+        type: 'object',
+        required: ['id'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+        },
+      },
+      body: {
+        type: 'object',
+        required: ['status'],
+        properties: {
+          status: { type: 'string' },
+        },
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            userId: { type: 'string' },
+            jobId: { type: 'string' },
+            jobTitle: { type: 'string' },
+            company: { type: 'string' },
+            location: { type: 'string' },
+            jobUrl: { type: 'string' },
+            status: { type: 'string' },
+            appliedAt: { type: 'string', format: 'date-time' },
+            notes: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        403: { type: 'object', properties: { error: { type: 'string' } } },
+        404: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string }; Body: { status: string } }>, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    const { id } = request.params;
+    const { status } = request.body;
+
+    // Validate status is provided
+    if (!status) {
+      return reply.status(400).send({ error: 'status is required' });
+    }
+
+    app.logger.info({ userId: session.user.id, applicationId: id, newStatus: status }, 'Updating application status');
+
+    try {
+      // Check ownership
+      const application = await app.db.query.jobApplications.findFirst({
+        where: eq(schema.jobApplications.id, id),
+      });
+
+      if (!application) {
+        return reply.status(404).send({ error: 'Application not found' });
+      }
+
+      if (application.userId !== session.user.id) {
+        app.logger.warn({ userId: session.user.id, applicationId: id, ownerId: application.userId }, 'Unauthorized application status update');
+        return reply.status(403).send({ error: 'Unauthorized' });
+      }
+
+      const updated = await app.db.update(schema.jobApplications)
+        .set({ status })
+        .where(eq(schema.jobApplications.id, id))
+        .returning();
+
+      app.logger.info({ applicationId: id, newStatus: status }, 'Application status updated successfully');
+      return updated[0];
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id, applicationId: id }, 'Failed to update application status');
+      throw error;
+    }
+  });
 }

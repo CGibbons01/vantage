@@ -90,43 +90,34 @@ export async function extractTextFromFile(buffer: Buffer, mimeType: string): Pro
     if (mimeTypeLower === 'application/pdf') {
       // Use pdf-parse via createRequire (CommonJS pattern)
       const require = createRequire(import.meta.url);
-      let pdfParse = require('pdf-parse');
+      const pdfParseModule = require('pdf-parse');
 
-      // Handle different module export patterns
-      // Try to get the actual function from the module
-      if (typeof pdfParse !== 'function') {
-        // If it's not a function, try .default
-        if (pdfParse.default && typeof pdfParse.default === 'function') {
-          pdfParse = pdfParse.default;
-        } else {
-          // If .default doesn't work, it might be a class, so we'll try to use it with 'new'
-          // But first, try to call it and catch if it needs 'new'
-          pdfParse = pdfParse as any;
-        }
-      }
-
-      // Try to extract text using pdf-parse
+      // Try to extract text from PDF
       let pdfData: any;
+
       try {
-        // Try calling as a function
-        if (typeof pdfParse === 'function') {
-          pdfData = await pdfParse(buffer);
+        // Try direct call
+        if (typeof pdfParseModule === 'function') {
+          pdfData = await pdfParseModule(buffer);
+        } else if (pdfParseModule.default && typeof pdfParseModule.default === 'function') {
+          // Try .default export
+          pdfData = await pdfParseModule.default(buffer);
+        } else if (typeof pdfParseModule === 'object') {
+          // Last resort: try to find a callable property
+          const callableKey = Object.keys(pdfParseModule).find(
+            key => typeof pdfParseModule[key] === 'function'
+          );
+          if (callableKey) {
+            pdfData = await pdfParseModule[callableKey](buffer);
+          } else {
+            throw new Error('pdf-parse module has no callable function or default export');
+          }
         } else {
-          // If it's not a function, try with 'new' keyword
-          const instance = new pdfParse(buffer);
-          pdfData = await instance;
+          throw new Error('pdf-parse module is not callable');
         }
-      } catch (error) {
-        // If direct call failed and it's not a function, try with 'new'
-        if (!(error instanceof TypeError && typeof pdfParse !== 'function')) {
-          throw error;
-        }
-        try {
-          const instance = new pdfParse(buffer);
-          pdfData = await instance;
-        } catch (newError) {
-          throw error; // Throw original error if 'new' also fails
-        }
+      } catch (pdferror) {
+        // If pdf-parse fails, return error with details
+        throw new Error(`pdf-parse error: ${pdferror instanceof Error ? pdferror.message : String(pdferror)}`);
       }
 
       return pdfData.text || '';
