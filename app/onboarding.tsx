@@ -67,8 +67,8 @@ export default function OnboardingScreen() {
 
     if (isLastStep) {
       await completeOnboarding();
-      console.log('[Onboarding] Complete — user signed in:', !!user, '— routing to', user ? '/(tabs)' : '/auth-screen');
-      router.replace(user ? "/(tabs)" : "/auth-screen");
+      console.log('[Onboarding] Complete — routing to /(tabs)');
+      router.replace("/(tabs)");
     } else {
       if (isAnimating.current) return;
       isAnimating.current = true;

@@ -1,17 +1,14 @@
 import "react-native-reanimated";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
 import { Redirect, Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useColorScheme, Alert, View, ActivityIndicator, Platform } from "react-native";
+import { useColorScheme, Alert, View, ActivityIndicator } from "react-native";
 import { useNetworkState } from "expo-network";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as SecureStore from "expo-secure-store";
-import { authClient, BEARER_TOKEN_KEY } from "@/lib/auth";
-import Constants from "expo-constants";
+import { isOnboardingComplete } from "@/utils/onboardingStorage";
 import {
   DarkTheme,
   DefaultTheme,
@@ -26,108 +23,91 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 
 SplashScreen.preventAutoHideAsync();
 
-const AUTH_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/paywall", "/onboarding", "/welcome", "/privacy"];
-
-// ─── One-time dev reset ───────────────────────────────────────────────────────
-// Wipes ALL persisted auth, session, onboarding, and subscription cache so the
-// app starts fresh and routes to the welcome/auth screen.
-// This runs once on this launch. Remove this call (and the function) when done.
-async function wipeAllPersistedData() {
-  console.log("[DevReset] Starting full data wipe...");
-
-  const _PROJECT_SCOPE =
-    Constants.expoConfig?.extra?.nativelyProjectId ||
-    Constants.expoConfig?.slug ||
-    "app";
-
-  // SecureStore keys to delete (auth token + onboarding + RC subscription caches)
-  const secureKeys = [
-    BEARER_TOKEN_KEY,
-    `onboarding_complete_${_PROJECT_SCOPE}`,
-    `rc_subscribed_${_PROJECT_SCOPE}`,
-    `rc_dev_native_${_PROJECT_SCOPE}`,
-    // better-auth/expo stores session tokens under this prefix
-    `vantageairecruitment_session_token`,
-    `vantageairecruitment_session_data`,
-  ];
-
-  if (Platform.OS !== "web") {
-    for (const key of secureKeys) {
-      try {
-        await SecureStore.deleteItemAsync(key);
-        console.log(`[DevReset] Deleted SecureStore key: ${key}`);
-      } catch {
-        // key may not exist — ignore
-      }
-    }
-  } else {
-    // Web: clear localStorage keys
-    for (const key of secureKeys) {
-      localStorage.removeItem(key);
-    }
-    localStorage.removeItem(`rc_mock_purchased_${_PROJECT_SCOPE}`);
-    console.log("[DevReset] Cleared web localStorage keys");
-  }
-
-  // Wipe all AsyncStorage (covers any other cached state)
-  try {
-    await AsyncStorage.clear();
-    console.log("[DevReset] AsyncStorage.clear() complete");
-  } catch (e) {
-    console.warn("[DevReset] AsyncStorage.clear() failed:", e);
-  }
-
-  // Sign out from better-auth to invalidate the server session
-  try {
-    await authClient.signOut();
-    console.log("[DevReset] authClient.signOut() complete");
-  } catch (e) {
-    console.warn("[DevReset] authClient.signOut() failed (may already be signed out):", e);
-  }
-
-  // RevenueCat logOut — only available in native builds (not Expo Go)
-  if (Platform.OS !== "web") {
-    try {
-      // Dynamic import avoids crashing in Expo Go where the native module is absent
-      const rcModule = await import("react-native-purchases");
-      const Purchases = rcModule.default;
-      if (typeof Purchases?.isConfigured === "function" && await Purchases.isConfigured()) {
-        await Purchases.logOut();
-        console.log("[DevReset] Purchases.logOut() complete");
-      }
-    } catch {
-      // RC native module not available in standard Expo Go — safe to ignore
-    }
-  }
-
-  console.log("[DevReset] Full data wipe complete. App will route to welcome screen.");
-}
-// ─────────────────────────────────────────────────────────────────────────────
+// Routes that are only accessible when NOT authenticated
+const UNAUTH_ONLY_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/welcome"];
+// Routes that are accessible regardless of auth state
+const PUBLIC_ROUTES = ["/privacy", "/paywall"];
+// Onboarding is special — accessible only when authenticated but onboarding not done
+const ONBOARDING_ROUTE = "/onboarding";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
-  const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
+  useEffect(() => {
+    // Only check onboarding once we know the user is logged in
+    if (!loading && user) {
+      isOnboardingComplete().then((done) => {
+        console.log("[AuthGuard] onboarding complete:", done);
+        setOnboardingDone(done);
+      });
+    } else if (!loading && !user) {
+      // No user — reset so next login re-checks
+      setOnboardingDone(null);
+    }
+  }, [loading, user]);
 
+  // Show spinner while auth state is loading
   if (loading) {
+    console.log("[AuthGuard] Auth loading — showing spinner");
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>
-        <ActivityIndicator size="large" color="#fff" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F172A" }}>
+        <ActivityIndicator size="large" color="#F59E0B" />
       </View>
     );
   }
 
-  if (!user && !isAuthRoute) {
-    console.log("[AuthGuard] Unauthenticated user, redirecting to /welcome");
+  const isUnauthOnly = UNAUTH_ONLY_ROUTES.some((r) => pathname.startsWith(r));
+  const isPublic = PUBLIC_ROUTES.some((r) => pathname.startsWith(r));
+  const isOnboarding = pathname.startsWith(ONBOARDING_ROUTE);
+  const isInTabs = pathname.startsWith("/(tabs)") || pathname === "/";
+
+  // ── No user ──────────────────────────────────────────────────────────────
+  if (!user) {
+    // Allow unauth-only routes and public routes
+    if (isUnauthOnly || isPublic) {
+      return <>{children}</>;
+    }
+    // Anything else (tabs, onboarding) → send to welcome
+    console.log("[AuthGuard] No user on protected route, redirecting to /welcome");
     return <Redirect href="/welcome" />;
   }
 
-  if (user && isAuthRoute) {
-    console.log("[AuthGuard] Authenticated user on auth route, redirecting to /(tabs)");
+  // ── User is logged in ─────────────────────────────────────────────────────
+  // Redirect away from unauth-only routes (welcome, auth-screen, etc.)
+  if (isUnauthOnly) {
+    console.log("[AuthGuard] Authenticated user on unauth route, redirecting to /(tabs)");
     return <Redirect href="/(tabs)" />;
   }
 
+  // Allow public routes regardless
+  if (isPublic) {
+    return <>{children}</>;
+  }
+
+  // Wait for onboarding check before deciding
+  if (onboardingDone === null) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F172A" }}>
+        <ActivityIndicator size="large" color="#F59E0B" />
+      </View>
+    );
+  }
+
+  // Onboarding not done → send to onboarding (unless already there)
+  if (!onboardingDone && !isOnboarding) {
+    console.log("[AuthGuard] Onboarding not complete, redirecting to /onboarding");
+    return <Redirect href="/onboarding" />;
+  }
+
+  // Onboarding done but user is on the onboarding screen → send to tabs
+  if (onboardingDone && isOnboarding) {
+    console.log("[AuthGuard] Onboarding already done, redirecting to /(tabs)");
+    return <Redirect href="/(tabs)" />;
+  }
+
+  // All good — render the requested screen
   return <>{children}</>;
 }
 
@@ -138,12 +118,6 @@ export default function RootLayout() {
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
-  // ONE-TIME DEV RESET — runs on first mount, wipes all cached credentials.
-  // Remove this useEffect (and the wipeAllPersistedData function above) after reset is done.
-  useEffect(() => {
-    wipeAllPersistedData();
-  }, []);
-
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
@@ -152,10 +126,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!networkState.isConnected && networkState.isInternetReachable === false) {
-      Alert.alert(
-        "You are offline",
-        "Check your connection and try again."
-      );
+      Alert.alert("You are offline", "Check your connection and try again.");
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
@@ -195,55 +166,55 @@ export default function RootLayout() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <StatusBar style="light" animated />
                   <AuthGuard>
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                    <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
-                    <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-                    <Stack.Screen name="welcome" options={{ headerShown: false }} />
-                    <Stack.Screen
-                      name="privacy"
-                      options={{
-                        headerShown: true,
-                        headerTitle: "Privacy Policy",
-                        headerBackButtonDisplayMode: "minimal",
-                        headerStyle: { backgroundColor: "#0F2B5B" },
-                        headerTintColor: "#F8FAFC",
-                      }}
-                    />
-                    <Stack.Screen
-                      name="notifications"
-                      options={{
-                        headerShown: true,
-                        headerTitle: "Job Alerts",
-                        headerBackButtonDisplayMode: "minimal",
-                        headerStyle: { backgroundColor: "#0F172A" },
-                        headerTintColor: "#F8FAFC",
-                      }}
-                    />
-                    <Stack.Screen
-                      name="job/[id]"
-                      options={{
-                        headerShown: true,
-                        headerTitle: "Job Details",
-                        headerBackButtonDisplayMode: "minimal",
-                        headerStyle: { backgroundColor: "#0F172A" },
-                        headerTintColor: "#F8FAFC",
-                      }}
-                    />
-                    <Stack.Screen
-                      name="profile/edit"
-                      options={{
-                        headerShown: true,
-                        headerTitle: "Edit Profile",
-                        headerBackButtonDisplayMode: "minimal",
-                        headerStyle: { backgroundColor: "#0F172A" },
-                        headerTintColor: "#F8FAFC",
-                      }}
-                    />
-                  </Stack>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                      <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
+                      <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                      <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                      <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
+                      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                      <Stack.Screen name="welcome" options={{ headerShown: false }} />
+                      <Stack.Screen
+                        name="privacy"
+                        options={{
+                          headerShown: true,
+                          headerTitle: "Privacy Policy",
+                          headerBackButtonDisplayMode: "minimal",
+                          headerStyle: { backgroundColor: "#0F2B5B" },
+                          headerTintColor: "#F8FAFC",
+                        }}
+                      />
+                      <Stack.Screen
+                        name="notifications"
+                        options={{
+                          headerShown: true,
+                          headerTitle: "Job Alerts",
+                          headerBackButtonDisplayMode: "minimal",
+                          headerStyle: { backgroundColor: "#0F172A" },
+                          headerTintColor: "#F8FAFC",
+                        }}
+                      />
+                      <Stack.Screen
+                        name="job/[id]"
+                        options={{
+                          headerShown: true,
+                          headerTitle: "Job Details",
+                          headerBackButtonDisplayMode: "minimal",
+                          headerStyle: { backgroundColor: "#0F172A" },
+                          headerTintColor: "#F8FAFC",
+                        }}
+                      />
+                      <Stack.Screen
+                        name="profile/edit"
+                        options={{
+                          headerShown: true,
+                          headerTitle: "Edit Profile",
+                          headerBackButtonDisplayMode: "minimal",
+                          headerStyle: { backgroundColor: "#0F172A" },
+                          headerTintColor: "#F8FAFC",
+                        }}
+                      />
+                    </Stack>
                   </AuthGuard>
                   <SystemBars style="light" />
                 </GestureHandlerRootView>
