@@ -52,7 +52,7 @@ interface ImproveResult {
 }
 
 interface ParseResult {
-  raw_text: string;
+  text: string;
   parsed?: {
     name?: string;
     email?: string;
@@ -363,10 +363,10 @@ export default function CVWriterScreen() {
       }
 
       const data: ParseResult = await response.json();
-      console.log('[CVWriter] CV parsed successfully, raw_text length:', data.raw_text?.length);
+      console.log('[CVWriter] CV parsed successfully, text length:', data.text?.length);
 
-      if (data.raw_text) {
-        setImpCV(data.raw_text);
+      if (data.text) {
+        setImpCV(data.text);
       }
       if (data.parsed?.name) setGenName(data.parsed.name);
       if (data.parsed?.email) setGenEmail(data.parsed.email);

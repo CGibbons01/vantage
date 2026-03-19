@@ -77,7 +77,7 @@ export default function HomeScreen() {
     setUploadError(null);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
         copyToCacheDirectory: true,
       });
 
@@ -87,17 +87,25 @@ export default function HomeScreen() {
       }
 
       const file = result.assets[0];
-      console.log("[Dashboard] PDF selected:", file.name, file.uri);
+      console.log("[Dashboard] File selected:", file.name, file.uri);
 
       setUploading(true);
 
       const token = await getBearerToken();
+      const fileName = file.name ?? "cv.pdf";
+      const lowerFileName = fileName.toLowerCase();
+      const detectedMime = lowerFileName.endsWith(".docx")
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : lowerFileName.endsWith(".doc")
+        ? "application/msword"
+        : "application/pdf";
       const formData = new FormData();
       formData.append("cv", {
         uri: file.uri,
-        name: file.name ?? "cv.pdf",
-        type: "application/pdf",
+        name: fileName,
+        type: detectedMime,
       } as any);
+      console.log("[Dashboard] Appended file to FormData, mime:", detectedMime);
 
       console.log("[Dashboard] POST /api/cv/score — uploading CV");
       const response = await fetch(`${BACKEND_URL}/api/cv/score`, {
