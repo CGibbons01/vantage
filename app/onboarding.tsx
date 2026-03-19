@@ -66,7 +66,11 @@ export default function OnboardingScreen() {
     if (!selectedOption) return;
 
     if (isLastStep) {
-      await completeOnboarding();
+      try {
+        await completeOnboarding();
+      } catch (e) {
+        console.warn('Failed to save onboarding state:', e);
+      }
       console.log('[Onboarding] Complete — routing to /(tabs)');
       router.replace("/(tabs)");
     } else {

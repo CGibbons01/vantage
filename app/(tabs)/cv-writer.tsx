@@ -7,9 +7,9 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Clipboard,
   Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FileText, Copy, CheckCircle, ChevronDown, ChevronUp, X, Download, Upload } from 'lucide-react-native';
@@ -143,7 +143,7 @@ async function downloadPdf(content: string, title: string, filename: string): Pr
     URL.revokeObjectURL(blobUrl);
     console.log('[CVWriter] PDF download triggered on web');
   } else {
-    const FileSystem = await import('expo-file-system');
+    const { default: FS, EncodingType } = await import('expo-file-system/legacy');
     const Sharing = await import('expo-sharing');
     const arrayBuffer = await response.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
@@ -152,9 +152,9 @@ async function downloadPdf(content: string, title: string, filename: string): Pr
       binary += String.fromCharCode(bytes[i]);
     }
     const base64 = btoa(binary);
-    const fileUri = FileSystem.default.documentDirectory + filename;
-    await FileSystem.default.writeAsStringAsync(fileUri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
+    const fileUri = FS.documentDirectory + filename;
+    await FS.writeAsStringAsync(fileUri, base64, {
+      encoding: EncodingType.Base64,
     });
     console.log('[CVWriter] PDF written to:', fileUri);
     const canShare = await Sharing.default.isAvailableAsync();
@@ -382,7 +382,7 @@ export default function CVWriterScreen() {
 
   const copyToClipboard = (text: string, type: 'gen' | 'imp') => {
     console.log('[CVWriter] Copy to clipboard pressed, type:', type);
-    Clipboard.setString(text);
+    Clipboard.setStringAsync(text);
     if (type === 'gen') {
       setGenCopied(true);
       setTimeout(() => setGenCopied(false), 2000);

@@ -7,9 +7,9 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Clipboard,
   Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Copy, CheckCircle, Download, ChevronDown, ChevronUp, Lightbulb, RotateCcw } from 'lucide-react-native';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -146,7 +146,7 @@ export default function CoverLetterScreen() {
   const handleCopy = () => {
     if (!result) return;
     console.log('[CoverLetter] Copy to clipboard pressed');
-    Clipboard.setString(result.cover_letter);
+    Clipboard.setStringAsync(result.cover_letter);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -188,7 +188,7 @@ export default function CoverLetterScreen() {
         URL.revokeObjectURL(blobUrl);
         console.log('[CoverLetter] PDF download triggered on web');
       } else {
-        const FileSystem = await import('expo-file-system');
+        const { default: FS, EncodingType } = await import('expo-file-system/legacy');
         const Sharing = await import('expo-sharing');
         const arrayBuffer = await response.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
@@ -197,9 +197,9 @@ export default function CoverLetterScreen() {
           binary += String.fromCharCode(bytes[i]);
         }
         const base64 = btoa(binary);
-        const fileUri = FileSystem.default.documentDirectory + 'cover-letter.pdf';
-        await FileSystem.default.writeAsStringAsync(fileUri, base64, {
-          encoding: FileSystem.EncodingType.Base64,
+        const fileUri = FS.documentDirectory + 'cover-letter.pdf';
+        await FS.writeAsStringAsync(fileUri, base64, {
+          encoding: EncodingType.Base64,
         });
         console.log('[CoverLetter] PDF written to:', fileUri);
         const canShare = await Sharing.default.isAvailableAsync();
