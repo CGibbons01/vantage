@@ -174,12 +174,6 @@ export function registerApplicationRoutes(app: App, fastify: FastifyInstance) {
     const { id } = request.params;
     const { status, notes } = request.body;
 
-    // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      return reply.status(400).send({ error: 'Invalid UUID format' });
-    }
-
     app.logger.info({ userId: session.user.id, applicationId: id }, 'Updating application');
 
     try {
@@ -243,12 +237,6 @@ export function registerApplicationRoutes(app: App, fastify: FastifyInstance) {
     if (!session) return;
 
     const { id } = request.params;
-
-    // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      return reply.status(400).send({ error: 'Invalid UUID format' });
-    }
 
     app.logger.info({ userId: session.user.id, applicationId: id }, 'Deleting application');
 
