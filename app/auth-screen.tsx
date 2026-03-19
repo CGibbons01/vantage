@@ -271,23 +271,25 @@ export default function AuthScreen() {
 
         {/* Social Buttons */}
         <View style={styles.socialButtons}>
-          {/* Apple first — App Store requirement */}
-          <TouchableOpacity
-            style={[styles.socialBtn, submittingApple && styles.socialBtnDisabled]}
-            onPress={handleApple}
-            disabled={anySubmitting}
-            activeOpacity={0.85}
-          >
-            {submittingApple
-              ? <ActivityIndicator color={COLORS.text} size="small" />
-              : (
-                <>
-                  <Text style={styles.appleIcon}></Text>
-                  <Text style={styles.socialBtnText}>Continue with Apple</Text>
-                </>
-              )
-            }
-          </TouchableOpacity>
+          {/* Apple first — App Store requirement, iOS only */}
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[styles.socialBtn, submittingApple && styles.socialBtnDisabled]}
+              onPress={handleApple}
+              disabled={anySubmitting}
+              activeOpacity={0.85}
+            >
+              {submittingApple
+                ? <ActivityIndicator color={COLORS.text} size="small" />
+                : (
+                  <>
+                    <Text style={styles.appleIcon}></Text>
+                    <Text style={styles.socialBtnText}>Continue with Apple</Text>
+                  </>
+                )
+              }
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[styles.socialBtn, submittingGoogle && styles.socialBtnDisabled]}

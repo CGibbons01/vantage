@@ -618,7 +618,7 @@ export default function DashboardScreen() {
             ) : (
               <>
                 <Upload size={18} color="#000" />
-                <Text style={styles.uploadBtnText}>Upload PDF</Text>
+                <Text style={styles.uploadBtnText}>Upload CV (PDF or Word)</Text>
               </>
             )}
           </AnimatedPressable>

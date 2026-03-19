@@ -44,6 +44,29 @@ export default function EditProfileScreen() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [error, setError] = useState('');
 
+  const handleSave = useCallback(async () => {
+    console.log('[EditProfile] Save pressed');
+    setSaving(true);
+    setError('');
+    try {
+      await authenticatedPut('/api/profile', {
+        headline: form.headline,
+        summary: form.summary,
+        location: form.location,
+        phone: form.phone,
+        linkedin_url: form.linkedin_url,
+        skills: form.skills,
+      });
+      console.log('[EditProfile] Profile saved successfully');
+      setShowSuccessModal(true);
+    } catch (e: any) {
+      console.error('[EditProfile] Save error:', e);
+      setError(e?.message || 'Failed to save profile. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }, [form]);
+
   const fetchProfile = useCallback(async () => {
     console.log('[EditProfile] Fetching profile for editing');
     try {
@@ -83,30 +106,7 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       ),
     });
-  }, [saving, form]);
-
-  const handleSave = async () => {
-    console.log('[EditProfile] Save pressed');
-    setSaving(true);
-    setError('');
-    try {
-      await authenticatedPut('/api/profile', {
-        headline: form.headline,
-        summary: form.summary,
-        location: form.location,
-        phone: form.phone,
-        linkedin_url: form.linkedin_url,
-        skills: form.skills,
-      });
-      console.log('[EditProfile] Profile saved successfully');
-      setShowSuccessModal(true);
-    } catch (e: any) {
-      console.error('[EditProfile] Save error:', e);
-      setError(e?.message || 'Failed to save profile. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [navigation, saving, handleSave]);
 
   const addSkill = () => {
     const skill = newSkill.trim();

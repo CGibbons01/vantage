@@ -2,6 +2,7 @@ import React from "react";
 import { View, Image } from "react-native";
 import { Tabs } from "expo-router";
 import FloatingTabBar from "@/components/FloatingTabBar";
+import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 
 function HeaderLogo() {
   return (
@@ -22,6 +23,7 @@ const TABS = [
 ];
 
 export default function TabLayout() {
+  useSubscriptionGuard();
   return (
     <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
       <Tabs
