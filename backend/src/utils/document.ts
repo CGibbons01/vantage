@@ -78,69 +78,73 @@ function renderParagraph(doc: PDFDocument, lines: string[]) {
 }
 
 /**
- * Extract text from PDF buffer using pdf-parse
+ * Extract text from file based on MIME type
+ * - For application/pdf: uses pdf-parse via createRequire
+ * - For Word documents: uses mammoth.extractRawText
+ * - Throws error for unsupported types with descriptive message including MIME type
  */
-export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+export async function extractTextFromFile(buffer: Buffer, mimeType: string): Promise<string> {
+  const mimeTypeLower = (mimeType || '').toLowerCase();
+
   try {
-    const require = createRequire(import.meta.url);
-    const pdfParse = require('pdf-parse');
-    const pdfData = await pdfParse(buffer);
-    return pdfData.text || '';
-  } catch (error) {
-    // If pdf-parse fails (e.g., invalid PDF), fall back to treating as plain text
-    try {
-      const text = buffer.toString('utf-8');
-      if (text.trim().length > 0) {
-        return text;
+    if (mimeTypeLower === 'application/pdf') {
+      // Use pdf-parse via createRequire (CommonJS pattern)
+      const require = createRequire(import.meta.url);
+      let pdfParse = require('pdf-parse');
+
+      // Handle different module export patterns
+      // Try to get the actual function from the module
+      if (typeof pdfParse !== 'function') {
+        // If it's not a function, try .default
+        if (pdfParse.default && typeof pdfParse.default === 'function') {
+          pdfParse = pdfParse.default;
+        } else {
+          // If .default doesn't work, it might be a class, so we'll try to use it with 'new'
+          // But first, try to call it and catch if it needs 'new'
+          pdfParse = pdfParse as any;
+        }
       }
-    } catch {
-      // Ignore UTF-8 conversion errors
-    }
-    throw new Error(`Failed to extract text from PDF: ${error}`);
-  }
-}
 
-/**
- * Extract text from DOCX buffer using mammoth
- */
-export async function extractTextFromDOCX(buffer: Buffer): Promise<string> {
-  try {
-    const result = await mammoth.extractRawText({ buffer });
-    return result.value || '';
-  } catch (error) {
-    // If mammoth fails (e.g., invalid DOCX), fall back to treating as plain text
-    try {
-      const text = buffer.toString('utf-8');
-      if (text.trim().length > 0) {
-        return text;
+      // Try to extract text using pdf-parse
+      let pdfData: any;
+      try {
+        // Try calling as a function
+        if (typeof pdfParse === 'function') {
+          pdfData = await pdfParse(buffer);
+        } else {
+          // If it's not a function, try with 'new' keyword
+          const instance = new pdfParse(buffer);
+          pdfData = await instance;
+        }
+      } catch (error) {
+        // If direct call failed and it's not a function, try with 'new'
+        if (!(error instanceof TypeError && typeof pdfParse !== 'function')) {
+          throw error;
+        }
+        try {
+          const instance = new pdfParse(buffer);
+          pdfData = await instance;
+        } catch (newError) {
+          throw error; // Throw original error if 'new' also fails
+        }
       }
-    } catch {
-      // Ignore UTF-8 conversion errors
+
+      return pdfData.text || '';
+    } else if (
+      mimeTypeLower === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimeTypeLower === 'application/msword'
+    ) {
+      // Use mammoth for Word documents
+      const result = await mammoth.extractRawText({ buffer });
+      return result.value || '';
+    } else {
+      throw new Error(`Unsupported file type: ${mimeType}`);
     }
-    throw new Error(`Failed to extract text from DOCX: ${error}`);
-  }
-}
-
-/**
- * Extract text from file based on mimetype or filename
- */
-export async function extractTextFromFile(
-  buffer: Buffer,
-  mimetype: string,
-  filename: string
-): Promise<string> {
-  const ext = filename.toLowerCase().split('.').pop();
-
-  if (mimetype === 'application/pdf' || ext === 'pdf') {
-    return extractTextFromPDF(buffer);
-  } else if (
-    mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-    mimetype === 'application/msword' ||
-    ext === 'docx' ||
-    ext === 'doc'
-  ) {
-    return extractTextFromDOCX(buffer);
-  } else {
-    throw new Error(`Unsupported file type: ${mimetype}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Unsupported file type')) {
+      throw error;
+    }
+    throw new Error(`Failed to extract text from file (MIME type: ${mimeType}): ${message}`);
   }
 }

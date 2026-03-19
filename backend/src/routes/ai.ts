@@ -539,28 +539,16 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         return reply.status(400).send({ error: 'Failed to read uploaded file' });
       }
 
-      // Extract text based on file type
-      app.logger.info({ fileName: cvFilename, mimeTypeLower }, 'Extracting text from CV file');
+      // Extract text based on file type using shared utility
+      app.logger.info({ fileName: cvFilename, mimeType: cvFile.mimetype }, 'Extracting text from CV file');
       try {
-        if (isPDF) {
-          const require = createRequire(import.meta.url);
-          const pdfParseModule = require('pdf-parse');
-          const pdfParse = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
-          const pdfData = await pdfParse(buffer);
-          cvText = pdfData.text;
-        } else if (isText) {
-          cvText = buffer.toString('utf-8');
-        } else {
-          // Word documents
-          const mammothResult = await mammoth.extractRawText({ buffer });
-          cvText = mammothResult.value;
-        }
+        cvText = await extractTextFromFile(buffer, cvFile.mimetype);
 
         if (!cvText || cvText.trim().length === 0) {
           cvText = 'CV content could not be extracted from file';
         }
       } catch (extractError) {
-        app.logger.warn({ err: extractError, stack: (extractError as Error).stack }, 'Text extraction failed, using fallback');
+        app.logger.warn({ err: extractError, stack: (extractError as Error).stack }, 'Text extraction failed');
         cvText = buffer.toString('utf-8', 0, Math.min(5000, buffer.length)) || 'CV content could not be extracted';
       }
 
@@ -829,7 +817,7 @@ Return ONLY valid JSON matching this schema:
 
       try {
         app.logger.info({ filename }, 'Extracting text from file');
-        extractedText = await extractTextFromFile(buffer, fileData.mimetype, fileData.filename);
+        extractedText = await extractTextFromFile(buffer, fileData.mimetype);
       } catch (extractError) {
         const errorMsg = extractError instanceof Error ? extractError.message : String(extractError);
         app.logger.error({ err: extractError, filename }, 'Text extraction failed');

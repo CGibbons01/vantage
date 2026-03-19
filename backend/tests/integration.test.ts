@@ -60,6 +60,15 @@ describe("API Integration Tests", () => {
     expect(data.id).toBeDefined();
   });
 
+  test("Upload CV - missing file", async () => {
+    const form = new FormData();
+    const res = await authenticatedApi("/api/profile/upload-cv", authToken, {
+      method: "POST",
+      body: form,
+    });
+    await expectStatus(res, 400);
+  });
+
   // Job endpoints
   test("Search jobs", async () => {
     const res = await authenticatedApi("/api/jobs/search?keywords=developer&location=uk", authToken);
@@ -141,6 +150,16 @@ describe("API Integration Tests", () => {
     expect(data.status).toBe("applied");
   });
 
+  test("Update application - forbidden (not owned by user)", async () => {
+    const { token: token2 } = await signUpTestUser();
+    const res = await authenticatedApi(`/api/applications/${applicationId}`, token2, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
+    });
+    await expectStatus(res, 403);
+  });
+
   test("Delete application", async () => {
     const res = await authenticatedApi(`/api/applications/${applicationId}`, authToken, {
       method: "DELETE",
@@ -148,6 +167,34 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 200);
     const data = await res.json();
     expect(data.success).toBe(true);
+  });
+
+  test("Delete application - forbidden (not owned by user)", async () => {
+    // Create an application with first user
+    const createRes = await authenticatedApi("/api/applications", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: "job-456",
+        job_title: "Backend Developer",
+        company: "Another Corp",
+        location: "New York",
+        job_url: "https://example.com/jobs/456",
+      }),
+    });
+    const appId = (await createRes.json()).id;
+
+    // Try to delete with second user
+    const { token: token2 } = await signUpTestUser();
+    const res = await authenticatedApi(`/api/applications/${appId}`, token2, {
+      method: "DELETE",
+    });
+    await expectStatus(res, 403);
+
+    // Clean up: delete with correct user
+    await authenticatedApi(`/api/applications/${appId}`, authToken, {
+      method: "DELETE",
+    });
   });
 
   test("Update application - not found", async () => {
