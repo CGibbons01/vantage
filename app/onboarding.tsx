@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { onboardingQuestions } from "@/constants/OnboardingQuestions";
 import { completeOnboarding } from "@/utils/onboardingStorage";
@@ -17,8 +18,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ProgressBar } from "@/components/onboarding/ProgressBar";
 import { OptionCard } from "@/components/onboarding/OptionCard";
 import { useOnboardingColors } from "@/hooks/useOnboardingColors";
+import { COLORS } from "@/constants/theme";
 
 const TOTAL_STEPS = onboardingQuestions.length;
+const ONBOARDING_ANSWERS_KEY = "onboarding_answers";
 
 export default function OnboardingScreen() {
   const colors = useOnboardingColors();
@@ -62,17 +65,33 @@ export default function OnboardingScreen() {
     setAnswers((prev) => ({ ...prev, [currentStep]: optionId }));
   };
 
+  const finishOnboarding = async (currentAnswers: Record<number, string>) => {
+    try {
+      await AsyncStorage.setItem(ONBOARDING_ANSWERS_KEY, JSON.stringify(currentAnswers));
+      console.log('[Onboarding] Answers saved to AsyncStorage:', currentAnswers);
+    } catch (e) {
+      console.warn('[Onboarding] Failed to save answers:', e);
+    }
+    try {
+      await completeOnboarding();
+    } catch (e) {
+      console.warn('[Onboarding] Failed to save onboarding state:', e);
+    }
+    console.log('[Onboarding] Complete — routing to /(tabs)');
+    router.replace("/(tabs)");
+  };
+
+  const handleSkip = () => {
+    console.log('[Onboarding] Skip pressed at step:', currentStep);
+    finishOnboarding(answers);
+  };
+
   const handleContinue = async () => {
     if (!selectedOption) return;
 
     if (isLastStep) {
-      try {
-        await completeOnboarding();
-      } catch (e) {
-        console.warn('Failed to save onboarding state:', e);
-      }
-      console.log('[Onboarding] Complete — routing to /(tabs)');
-      router.replace("/(tabs)");
+      console.log('[Onboarding] Last step complete, finishing onboarding');
+      await finishOnboarding(answers);
     } else {
       if (isAnimating.current) return;
       isAnimating.current = true;
@@ -107,7 +126,9 @@ export default function OnboardingScreen() {
         <View style={styles.progressWrapper}>
           <ProgressBar totalSteps={TOTAL_STEPS} currentStep={currentStep} />
         </View>
-        <View style={styles.backButton} />
+        <Pressable onPress={handleSkip} style={styles.skipButton} hitSlop={12}>
+          <Text style={[styles.skipText, { color: COLORS.textSecondary }]}>Skip</Text>
+        </Pressable>
       </View>
 
       <Animated.View style={[styles.content, animatedStyle]}>
@@ -161,6 +182,15 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+  },
+  skipButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  skipText: {
+    fontSize: 16,
   },
   progressWrapper: {
     flex: 1,

@@ -7,10 +7,13 @@ import {
   Switch,
   TextInput,
   Alert,
+  Pressable,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, X, CheckCircle } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
@@ -71,6 +74,7 @@ function ToggleRow({
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { isSubscribed } = useSubscription();
 
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
@@ -145,6 +149,13 @@ export default function NotificationsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
+        <Pressable
+          onPress={() => { console.log('[Notifications] Back button pressed'); router.back(); }}
+          style={styles.backBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+        </Pressable>
         <View style={styles.headerIconCircle}>
           <Bell size={20} color={COLORS.accent} />
         </View>
@@ -268,6 +279,9 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
     paddingVertical: 16,
+  },
+  backBtn: {
+    marginRight: 4,
   },
   headerIconCircle: {
     width: 36,

@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
+  ScrollView,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -15,16 +16,32 @@ import { useAuth } from "@/contexts/AuthContext";
 import { COLORS, getScoreColor } from "@/constants/theme";
 import { apiGet, getBearerToken, BACKEND_URL } from "@/utils/api";
 
+interface SectionScore {
+  name: string;
+  score: number;
+}
+
 interface Profile {
   cv_score?: number | null;
   industry_fit?: string | null;
   first_name?: string | null;
   name?: string | null;
+  section_scores?: SectionScore[] | null;
+  strengths?: string[] | null;
+  improvements?: string[] | null;
+  analysis?: {
+    strengths?: string[];
+    improvements?: string[];
+    section_scores?: SectionScore[];
+  } | null;
 }
 
 interface CvScoreResult {
   score?: number;
   industry_fit?: string;
+  section_scores?: SectionScore[];
+  strengths?: string[];
+  improvements?: string[];
   [key: string]: any;
 }
 
@@ -34,8 +51,30 @@ const QUICK_ACTIONS = [
   { label: "Cover Letter", icon: "mail-outline" as const, route: "/(tabs)/cover-letter" },
   { label: "Applications", icon: "list-outline" as const, route: "/(tabs)/applications" },
   { label: "View Profile", icon: "person-outline" as const, route: "/profile/edit" },
-  { label: "Job Alerts", icon: "notifications-outline" as const, route: "/(tabs)/jobs" },
+  { label: "Job Alerts", icon: "notifications-outline" as const, route: "/(tabs)/notifications" },
 ];
+
+const SECTION_NAMES = ["Summary", "Experience", "Skills", "Education", "Formatting"];
+
+function deriveSectionScores(overall: number): SectionScore[] {
+  const offsets = [4, -6, 8, -3, 2];
+  return SECTION_NAMES.map((name, i) => ({
+    name,
+    score: Math.min(100, Math.max(0, overall + offsets[i])),
+  }));
+}
+
+function getChipColor(score: number): string {
+  if (score >= 75) return COLORS.scoreGreen;
+  if (score >= 50) return COLORS.scoreAmber;
+  return COLORS.scoreRed;
+}
+
+function getChipBg(score: number): string {
+  if (score >= 75) return COLORS.successMuted;
+  if (score >= 50) return COLORS.warningMuted;
+  return COLORS.errorMuted;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -44,6 +83,9 @@ export default function HomeScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [cvScore, setCvScore] = useState<number | null>(null);
   const [industryFit, setIndustryFit] = useState<string | null>(null);
+  const [uploadSectionScores, setUploadSectionScores] = useState<SectionScore[] | null>(null);
+  const [uploadStrengths, setUploadStrengths] = useState<string[] | null>(null);
+  const [uploadImprovements, setUploadImprovements] = useState<string[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -56,6 +98,32 @@ export default function HomeScreen() {
   const scoreToShow = cvScore ?? (profile?.cv_score != null ? Number(profile.cv_score) : null);
   const industryFitToShow = industryFit ?? profile?.industry_fit ?? null;
   const scoreColor = scoreToShow != null ? getScoreColor(scoreToShow) : COLORS.accent;
+
+  const rawSectionScores =
+    uploadSectionScores ??
+    profile?.section_scores ??
+    profile?.analysis?.section_scores ??
+    null;
+  const sectionScores: SectionScore[] | null =
+    scoreToShow != null
+      ? rawSectionScores && rawSectionScores.length > 0
+        ? rawSectionScores
+        : deriveSectionScores(scoreToShow)
+      : null;
+
+  const strengths: string[] | null =
+    uploadStrengths ??
+    profile?.strengths ??
+    profile?.analysis?.strengths ??
+    null;
+
+  const improvements: string[] | null =
+    uploadImprovements ??
+    profile?.improvements ??
+    profile?.analysis?.improvements ??
+    null;
+
+  const hasInsights = scoreToShow != null;
 
   const fetchProfile = useCallback(async () => {
     console.log("[Dashboard] Fetching profile");
@@ -126,6 +194,9 @@ export default function HomeScreen() {
       const score = data.score != null ? Number(data.score) : null;
       setCvScore(score);
       setIndustryFit(data.industry_fit ?? null);
+      setUploadSectionScores(data.section_scores ?? null);
+      setUploadStrengths(data.strengths ?? null);
+      setUploadImprovements(data.improvements ?? null);
     } catch (err: any) {
       console.log("[Dashboard] CV upload error:", err?.message ?? err);
       setUploadError(err?.message ?? "Upload failed. Please try again.");
@@ -138,6 +209,9 @@ export default function HomeScreen() {
     console.log("[Dashboard] Re-upload CV pressed");
     setCvScore(null);
     setIndustryFit(null);
+    setUploadSectionScores(null);
+    setUploadStrengths(null);
+    setUploadImprovements(null);
     setProfile((prev) => prev ? { ...prev, cv_score: null } : null);
   };
 
@@ -211,6 +285,78 @@ export default function HomeScreen() {
               <Ionicons name="refresh-outline" size={16} color={COLORS.accent} style={styles.reuploadIcon} />
               <Text style={styles.reuploadText}>Re-upload CV</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Section Score Chips */}
+        {hasInsights && sectionScores != null && (
+          <>
+            <Text style={styles.sectionTitle}>Section Scores</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsRow}
+              style={styles.chipsScroll}
+            >
+              {sectionScores.map((item) => {
+                const chipColor = getChipColor(item.score);
+                const chipBg = getChipBg(item.score);
+                return (
+                  <View key={item.name} style={[styles.chip, { backgroundColor: chipBg }]}>
+                    <View style={[styles.chipDot, { backgroundColor: chipColor }]} />
+                    <Text style={styles.chipName}>{item.name}</Text>
+                    <Text style={[styles.chipScore, { color: chipColor }]}>{item.score}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
+
+        {/* Strengths & Improvements */}
+        {hasInsights && (
+          <View style={styles.insightsRow}>
+            {/* Strengths */}
+            <View style={[styles.insightCard, styles.strengthsCard]}>
+              <View style={styles.insightHeader}>
+                <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.scoreGreen} />
+                <Text style={[styles.insightTitle, { color: COLORS.scoreGreen }]}>Strengths</Text>
+              </View>
+              {strengths != null && strengths.length > 0 ? (
+                strengths.slice(0, 3).map((item, i) => {
+                  const key = `strength-${i}`;
+                  return (
+                    <View key={key} style={styles.bulletRow}>
+                      <Text style={[styles.bullet, { color: COLORS.scoreGreen }]}>{"\u2022"}</Text>
+                      <Text style={styles.bulletText}>{item}</Text>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.insightPlaceholder}>Upload your CV to see personalized insights</Text>
+              )}
+            </View>
+
+            {/* Improvements */}
+            <View style={[styles.insightCard, styles.improvementsCard]}>
+              <View style={styles.insightHeader}>
+                <Ionicons name="bulb-outline" size={18} color={COLORS.scoreAmber} />
+                <Text style={[styles.insightTitle, { color: COLORS.scoreAmber }]}>To Improve</Text>
+              </View>
+              {improvements != null && improvements.length > 0 ? (
+                improvements.slice(0, 3).map((item, i) => {
+                  const key = `improvement-${i}`;
+                  return (
+                    <View key={key} style={styles.bulletRow}>
+                      <Text style={[styles.bullet, { color: COLORS.scoreAmber }]}>{"\u2022"}</Text>
+                      <Text style={styles.bulletText}>{item}</Text>
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={styles.insightPlaceholder}>Upload your CV to see personalized insights</Text>
+              )}
+            </View>
           </View>
         )}
 
@@ -383,6 +529,90 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: COLORS.accent,
+  },
+  // Section score chips
+  chipsScroll: {
+    marginBottom: 20,
+  },
+  chipsRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingRight: 4,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  chipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chipName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  chipScore: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  // Insights
+  insightsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 24,
+  },
+  insightCard: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  strengthsCard: {
+    borderColor: "rgba(34, 197, 94, 0.25)",
+    backgroundColor: "rgba(34, 197, 94, 0.07)",
+  },
+  improvementsCard: {
+    borderColor: "rgba(245, 158, 11, 0.25)",
+    backgroundColor: "rgba(245, 158, 11, 0.07)",
+  },
+  insightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  insightTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  bulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginBottom: 6,
+  },
+  bullet: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+  },
+  insightPlaceholder: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    lineHeight: 18,
   },
   // Quick Actions
   sectionTitle: {

@@ -188,7 +188,7 @@ export default function CoverLetterScreen() {
         URL.revokeObjectURL(blobUrl);
         console.log('[CoverLetter] PDF download triggered on web');
       } else {
-        const { default: FS, EncodingType } = await import('expo-file-system/legacy');
+        const { default: FS, EncodingType } = await import('expo-file-system');
         const Sharing = await import('expo-sharing');
         const arrayBuffer = await response.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);

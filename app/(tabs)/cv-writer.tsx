@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -143,7 +143,7 @@ async function downloadPdf(content: string, title: string, filename: string): Pr
     URL.revokeObjectURL(blobUrl);
     console.log('[CVWriter] PDF download triggered on web');
   } else {
-    const { default: FS, EncodingType } = await import('expo-file-system/legacy');
+    const { default: FS, EncodingType } = await import('expo-file-system');
     const Sharing = await import('expo-sharing');
     const arrayBuffer = await response.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
@@ -180,6 +180,16 @@ export default function CVWriterScreen() {
   const [genSummary, setGenSummary] = useState('');
   const [skillInput, setSkillInput] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
+
+  // Experience entries
+  const [experienceEntries, setExperienceEntries] = useState([
+    { title: '', company: '', duration: '', description: '' },
+  ]);
+
+  // Education entries
+  const [educationEntries, setEducationEntries] = useState([
+    { degree: '', institution: '', year: '' },
+  ]);
   const [genLoading, setGenLoading] = useState(false);
   const [genResult, setGenResult] = useState<GenerateResult | null>(null);
   const [activeSection, setActiveSection] = useState<CVSection>('summary');
@@ -207,6 +217,32 @@ export default function CVWriterScreen() {
       </View>
     );
   }
+
+  // Experience helpers
+  const addExperience = () => {
+    console.log('[CVWriter] Add experience entry');
+    setExperienceEntries(prev => [...prev, { title: '', company: '', duration: '', description: '' }]);
+  };
+  const removeExperience = (index: number) => {
+    console.log('[CVWriter] Remove experience entry at index:', index);
+    setExperienceEntries(prev => prev.filter((_, i) => i !== index));
+  };
+  const updateExperience = (index: number, field: string, value: string) => {
+    setExperienceEntries(prev => prev.map((e, i) => i === index ? { ...e, [field]: value } : e));
+  };
+
+  // Education helpers
+  const addEducation = () => {
+    console.log('[CVWriter] Add education entry');
+    setEducationEntries(prev => [...prev, { degree: '', institution: '', year: '' }]);
+  };
+  const removeEducation = (index: number) => {
+    console.log('[CVWriter] Remove education entry at index:', index);
+    setEducationEntries(prev => prev.filter((_, i) => i !== index));
+  };
+  const updateEducation = (index: number, field: string, value: string) => {
+    setEducationEntries(prev => prev.map((e, i) => i === index ? { ...e, [field]: value } : e));
+  };
 
   const addSkill = () => {
     const trimmed = skillInput.trim();
@@ -242,8 +278,17 @@ export default function CVWriterScreen() {
         name: genName.trim(),
         email: genEmail.trim(),
         target_role: genRole.trim(),
-        experience: [],
-        education: [],
+        experience: experienceEntries.map(e => ({
+          title: e.title,
+          company: e.company,
+          duration: e.duration,
+          description: e.description,
+        })),
+        education: educationEntries.map(e => ({
+          degree: e.degree,
+          institution: e.institution,
+          year: e.year,
+        })),
         skills,
         summary: genSummary.trim(),
       });
@@ -505,6 +550,108 @@ export default function CVWriterScreen() {
               numberOfLines={4}
               textAlignVertical="top"
             />
+
+            {/* Experience Section */}
+            <Text style={styles.sectionHeading}>Experience</Text>
+            {experienceEntries.map((entry, index) => {
+              const isFirst = index === 0;
+              return (
+                <View key={index} style={styles.entryCard}>
+                  {!isFirst && (
+                    <AnimatedPressable
+                      style={styles.entryRemoveBtn}
+                      onPress={() => removeExperience(index)}
+                    >
+                      <X size={14} color={COLORS.textMuted} />
+                    </AnimatedPressable>
+                  )}
+                  <Text style={styles.fieldLabel}>Job Title</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Senior Software Engineer"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.title}
+                    onChangeText={v => updateExperience(index, 'title', v)}
+                  />
+                  <Text style={styles.fieldLabel}>Company</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Acme Corp"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.company}
+                    onChangeText={v => updateExperience(index, 'company', v)}
+                  />
+                  <Text style={styles.fieldLabel}>Duration</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Jan 2020 – Mar 2023"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.duration}
+                    onChangeText={v => updateExperience(index, 'duration', v)}
+                  />
+                  <Text style={styles.fieldLabel}>Description</Text>
+                  <TextInput
+                    style={[styles.input, styles.textareaSmall]}
+                    placeholder="Key responsibilities and achievements..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.description}
+                    onChangeText={v => updateExperience(index, 'description', v)}
+                    multiline
+                    numberOfLines={3}
+                    textAlignVertical="top"
+                  />
+                </View>
+              );
+            })}
+            <AnimatedPressable style={styles.addEntryBtn} onPress={addExperience}>
+              <Text style={styles.addEntryBtnText}>+ Add Experience</Text>
+            </AnimatedPressable>
+
+            {/* Education Section */}
+            <Text style={styles.sectionHeading}>Education</Text>
+            {educationEntries.map((entry, index) => {
+              const isFirst = index === 0;
+              return (
+                <View key={index} style={styles.entryCard}>
+                  {!isFirst && (
+                    <AnimatedPressable
+                      style={styles.entryRemoveBtn}
+                      onPress={() => removeEducation(index)}
+                    >
+                      <X size={14} color={COLORS.textMuted} />
+                    </AnimatedPressable>
+                  )}
+                  <Text style={styles.fieldLabel}>Degree</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. BSc Computer Science"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.degree}
+                    onChangeText={v => updateEducation(index, 'degree', v)}
+                  />
+                  <Text style={styles.fieldLabel}>Institution</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. University of Manchester"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.institution}
+                    onChangeText={v => updateEducation(index, 'institution', v)}
+                  />
+                  <Text style={styles.fieldLabel}>Year</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 2019"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={entry.year}
+                    onChangeText={v => updateEducation(index, 'year', v)}
+                    keyboardType="numeric"
+                  />
+                </View>
+              );
+            })}
+            <AnimatedPressable style={styles.addEntryBtn} onPress={addEducation}>
+              <Text style={styles.addEntryBtnText}>+ Add Education</Text>
+            </AnimatedPressable>
 
             <Text style={styles.fieldLabel}>Skills</Text>
             <View style={styles.skillInputRow}>
@@ -818,7 +965,40 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   textarea: { height: 100, paddingTop: 13 },
+  textareaSmall: { height: 76, paddingTop: 13 },
   textareaLarge: { height: 160, paddingTop: 13 },
+  sectionHeading: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginTop: 8,
+    marginBottom: 10,
+    letterSpacing: -0.2,
+  },
+  entryCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+  },
+  entryRemoveBtn: {
+    alignSelf: 'flex-end',
+    padding: 4,
+    marginBottom: 4,
+    marginTop: -4,
+  },
+  addEntryBtn: {
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    borderStyle: 'dashed',
+    marginBottom: 20,
+  },
+  addEntryBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
   skillInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   addSkillBtn: {
     backgroundColor: COLORS.accentMuted,

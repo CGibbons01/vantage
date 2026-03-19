@@ -281,7 +281,11 @@ export default function EditProfileScreen() {
             <Text style={styles.modalMessage}>Your profile has been saved successfully.</Text>
             <TouchableOpacity
               style={styles.modalBtn}
-              onPress={() => setShowSuccessModal(false)}
+              onPress={() => {
+                console.log('[EditProfile] Done pressed, navigating back');
+                setShowSuccessModal(false);
+                navigation.goBack();
+              }}
             >
               <Text style={styles.modalBtnText}>Done</Text>
             </TouchableOpacity>
