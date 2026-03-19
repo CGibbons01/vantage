@@ -7,13 +7,17 @@ process.env.ADZUNA_APP_KEY = process.env.ADZUNA_APP_KEY || "2899cb384058f7a2a293
 
 describe("API Integration Tests", () => {
   let authToken: string;
+  let authUser: any;
   let applicationId: string;
   let jobId: string = "";
 
   test("Sign up test user", async () => {
     const { token, user } = await signUpTestUser();
     authToken = token;
+    authUser = user;
     expect(authToken).toBeDefined();
+    expect(authUser).toBeDefined();
+    expect(authUser.id).toBeDefined();
   });
 
   // Profile endpoints
@@ -23,6 +27,7 @@ describe("API Integration Tests", () => {
     const data = await res.json();
     expect(data.id).toBeDefined();
     expect(data.userId).toBeDefined();
+    expect(data.userId).toBe(authUser.id);
   });
 
   test("Update user profile", async () => {
@@ -40,6 +45,7 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 200);
     const data = await res.json();
     expect(data.headline).toBe("Senior Developer");
+    expect(data.userId).toBe(authUser.id);
   });
 
   test("Upload CV", async () => {
@@ -105,6 +111,7 @@ describe("API Integration Tests", () => {
     const data = await res.json();
     applicationId = data.id;
     expect(applicationId).toBeDefined();
+    expect(data.userId).toBe(authUser.id);
   });
 
   test("Create application - missing required field", async () => {
