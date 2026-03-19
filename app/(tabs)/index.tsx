@@ -393,7 +393,7 @@ export default function DashboardScreen() {
     let pickerResult: DocumentPicker.DocumentPickerResult | null = null;
     try {
       pickerResult = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
         copyToCacheDirectory: true,
       });
     } catch (e: any) {
@@ -447,12 +447,19 @@ export default function DashboardScreen() {
         formData.append('cv', blob, fileName);
         console.log('[Dashboard] Appended Blob to FormData, size:', blob.size);
       } else {
+        const assetName = asset.name || 'cv.pdf';
+        const lowerName = assetName.toLowerCase();
+        const detectedMime = lowerName.endsWith('.docx')
+          ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          : lowerName.endsWith('.doc')
+          ? 'application/msword'
+          : 'application/pdf';
         formData.append('cv', {
           uri: asset.uri,
-          name: asset.name || 'cv.pdf',
-          type: asset.mimeType || 'application/pdf',
+          name: assetName,
+          type: detectedMime,
         } as any);
-        console.log('[Dashboard] Appended native file object to FormData');
+        console.log('[Dashboard] Appended native file object to FormData, mime:', detectedMime);
       }
 
       const uploadUrl = `${BACKEND_URL}/api/cv/score`;
