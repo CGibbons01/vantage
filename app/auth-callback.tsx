@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { Platform } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+
+// Must be called at module level to dismiss the in-app browser on native after OAuth redirect
+WebBrowser.maybeCompleteAuthSession();
 
 type Status = "processing" | "success" | "error";
 
