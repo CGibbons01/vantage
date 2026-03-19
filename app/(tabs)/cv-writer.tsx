@@ -700,9 +700,15 @@ export default function CVWriterScreen() {
                 )}
 
                 {/* Improved CV */}
+                <View style={styles.successBanner}>
+                  <Text style={styles.successBannerText}>
+                    {"✓ Your CV has been fully rewritten and optimised for "}
+                    {impRole}
+                  </Text>
+                </View>
                 <View style={styles.resultCard}>
                   <View style={styles.resultHeader}>
-                    <Text style={styles.resultTitle}>Improved CV</Text>
+                    <Text style={styles.resultTitle}>Your Complete Rewritten CV</Text>
                     <View style={styles.actionBtnsRow}>
                       <AnimatedPressable
                         style={[styles.copyBtn, impDownloading && styles.copyBtnDisabled]}
@@ -729,9 +735,20 @@ export default function CVWriterScreen() {
                       </AnimatedPressable>
                     </View>
                   </View>
-                  <View style={styles.sectionContent}>
+                  <View style={styles.sectionContentTall}>
                     <Text style={styles.sectionContentText} selectable>{impResult.improved_cv_text}</Text>
                   </View>
+                  <AnimatedPressable
+                    style={styles.saveProfileBtn}
+                    onPress={async () => {
+                      console.log('[CVWriter] Save to Profile pressed');
+                      await AsyncStorage.setItem(USER_CV_KEY, impResult.improved_cv_text);
+                      console.log('[CVWriter] Improved CV saved to AsyncStorage key:', USER_CV_KEY);
+                      Alert.alert('CV saved!', 'It will be used across the app.');
+                    }}
+                  >
+                    <Text style={styles.saveProfileBtnText}>Save to Profile</Text>
+                  </AnimatedPressable>
                 </View>
               </>
             )}
@@ -914,7 +931,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
+  sectionContentTall: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    minHeight: 300,
+  },
   sectionContentText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
+  successBanner: {
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.3)',
+  },
+  successBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.success,
+    lineHeight: 18,
+  },
+  saveProfileBtn: {
+    marginTop: 12,
+    backgroundColor: COLORS.success,
+    borderRadius: 12,
+    height: 46,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveProfileBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   scoreCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
