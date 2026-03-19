@@ -188,7 +188,7 @@ export default function HomeScreen() {
               ) : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={18} color="#0F172A" style={styles.uploadButtonIcon} />
-                  <Text style={styles.uploadButtonText}>Upload PDF</Text>
+                  <Text style={styles.uploadButtonText}>Upload CV (PDF or Word)</Text>
                 </>
               )}
             </TouchableOpacity>
