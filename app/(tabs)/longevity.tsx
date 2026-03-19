@@ -173,17 +173,6 @@ export default function LongevityScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LongevityResult | null>(null);
 
-  if (!isSubscribed) {
-    return (
-      <View style={{ flex: 1, paddingTop: insets.top }}>
-        <PremiumLock
-          featureName="Career Longevity & AI Risk"
-          description="Discover how AI will impact your career and find roles with better long-term prospects."
-        />
-      </View>
-    );
-  }
-
   const handleAnalyse = async () => {
     console.log('[Longevity] Analyse My Career pressed');
     setLoading(true);
@@ -219,6 +208,17 @@ export default function LongevityScreen() {
     setResult(null);
     handleAnalyse();
   };
+
+  if (!isSubscribed) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        <PremiumLock
+          featureName="Career Longevity & AI Risk"
+          description="Discover how AI will impact your career and find roles with better long-term prospects."
+        />
+      </View>
+    );
+  }
 
   if (loading) {
     return (
