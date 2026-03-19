@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
 import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
+import mammoth from 'mammoth';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
@@ -240,15 +241,38 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     const body = validation.data;
     app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Improving CV');
 
-    const cvSnippet = body.cv_text.substring(0, 100);
+    try {
+      const focusAreasText = body.focus_areas && body.focus_areas.length > 0
+        ? `Special focus areas: ${body.focus_areas.join(', ')}`
+        : '';
 
-    app.logger.info({ userId: session.user.id, scoreBefore: 70, scoreAfter: 85 }, 'CV improved successfully');
-    return {
-      improved_cv_text: `Enhanced CV for ${body.target_role}: ${cvSnippet}`,
-      suggestions: ['Add quantifiable achievements', 'Use industry keywords', 'Include metrics and results'],
-      score_before: 70,
-      score_after: 85,
-    };
+      const { object } = await generateObject({
+        model: gateway('openai/gpt-4o-mini'),
+        schema: cvImproveResponseSchema,
+        schemaName: 'CVImproveResponse',
+        schemaDescription: 'Improved CV with suggestions and scores',
+        system: `You are an expert CV writer and career coach. Rewrite the following CV completely to be highly effective for the target role. Produce a complete, professional, ATS-optimised CV with all sections fully written out. Do not just give suggestions — write the entire improved CV.`,
+        prompt: `Target Role: ${body.target_role}
+${focusAreasText}
+
+Original CV:
+${body.cv_text.substring(0, 3000)}
+
+Please provide:
+1. improved_cv_text: A complete, rewritten CV optimized for the ${body.target_role} role (full sections, not just snippets)
+2. suggestions: Array of 3-5 specific improvements you made
+3. score_before: Quality score of the original CV (0-100)
+4. score_after: Quality score of the improved CV (0-100)`,
+      });
+
+      const result = object as z.infer<typeof cvImproveResponseSchema>;
+
+      app.logger.info({ userId: session.user.id, scoreBefore: result.score_before, scoreAfter: result.score_after }, 'CV improved successfully');
+      return result;
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to improve CV');
+      return reply.status(500).send({ error: 'Failed to improve CV' });
+    }
   });
 
   // POST /api/cover-letter/generate
@@ -769,53 +793,19 @@ Return ONLY valid JSON matching this schema:
   // POST /api/cv/parse
   fastify.post('/api/cv/parse', {
     schema: {
-      description: 'Parse uploaded CV file (PDF or DOCX) and extract structured data',
+      description: 'Parse uploaded CV file (PDF or DOCX) and extract text',
       tags: ['ai', 'cv'],
       response: {
         200: {
           type: 'object',
           properties: {
             raw_text: { type: 'string' },
-            parsed: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                email: { type: 'string' },
-                phone: { type: 'string' },
-                location: { type: 'string' },
-                headline: { type: 'string' },
-                summary: { type: 'string' },
-                linkedin_url: { type: 'string' },
-                skills: { type: 'array', items: { type: 'string' } },
-                experience: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      title: { type: 'string' },
-                      company: { type: 'string' },
-                      duration: { type: 'string' },
-                      description: { type: 'string' },
-                    },
-                  },
-                },
-                education: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      degree: { type: 'string' },
-                      institution: { type: 'string' },
-                      year: { type: 'string' },
-                    },
-                  },
-                },
-              },
-            },
+            filename: { type: 'string' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
+        422: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
@@ -832,86 +822,47 @@ Return ONLY valid JSON matching this schema:
         return reply.status(400).send({ error: 'No file uploaded' });
       }
 
+      // Detect file type
+      const isMimePDF = fileData.mimetype === 'application/pdf';
+      const isFilenamePDF = fileData.filename.toLowerCase().endsWith('.pdf');
+      const isPDF = isMimePDF || isFilenamePDF;
+
+      app.logger.info({ filename: fileData.filename, mimetype: fileData.mimetype, isPDF }, 'Detected file type');
+
       const buffer = await fileData.toBuffer();
-      const rawText = await extractTextFromFile(buffer, fileData.mimetype, fileData.filename);
-
-      if (!rawText || rawText.trim().length === 0) {
-        return reply.status(400).send({ error: 'Could not extract text from file' });
-      }
-
-      // Use AI to parse the CV text with fallback values
-      let parsed: any = {
-        name: null,
-        email: null,
-        phone: null,
-        location: null,
-        headline: null,
-        summary: null,
-        linkedin_url: null,
-        skills: [],
-        experience: [],
-        education: [],
-      };
+      let rawText: string = '';
 
       try {
-        const parsePrompt = `Parse this CV text and return ONLY valid JSON. Return exactly this structure: {name, email, phone, location, headline, summary, linkedin_url, skills, experience, education}. Use null for missing strings, empty arrays for missing lists. CV: ${rawText.substring(0, 2000)}`;
-
-        const { object } = await generateObject({
-          model: gateway('openai/gpt-4o-mini'),
-          schema: z.object({
-            name: z.string().nullable(),
-            email: z.string().nullable(),
-            phone: z.string().nullable(),
-            location: z.string().nullable(),
-            headline: z.string().nullable(),
-            summary: z.string().nullable(),
-            linkedin_url: z.string().nullable(),
-            skills: z.array(z.string()).default([]),
-            experience: z.array(z.object({
-              title: z.string().default(''),
-              company: z.string().default(''),
-              duration: z.string().default(''),
-              description: z.string().default(''),
-            }).optional()).default([]),
-            education: z.array(z.object({
-              degree: z.string().default(''),
-              institution: z.string().default(''),
-              year: z.string().default(''),
-            }).optional()).default([]),
-          }),
-          prompt: parsePrompt,
-        });
-
-        parsed = object;
-        app.logger.info({ userId: session.user.id }, 'CV parsed with AI successfully');
-      } catch (aiError) {
-        app.logger.warn({ err: aiError, userId: session.user.id }, 'AI parsing failed, using extraction fallback');
-        // Extract basic info from raw text using simple heuristics
-        const lines = rawText.split('\n');
-        parsed.name = lines[0]?.trim() || null;
-
-        // Try to find email
-        const emailMatch = rawText.match(/[\w\.-]+@[\w\.-]+\.\w+/);
-        parsed.email = emailMatch ? emailMatch[0] : null;
-
-        // Try to find phone
-        const phoneMatch = rawText.match(/[\d\s\-\+\(\)]{10,}/);
-        parsed.phone = phoneMatch ? phoneMatch[0].trim() : null;
-
-        // Extract skills from text
-        const skillsMatch = rawText.match(/[Ss]kills?:?\s*(.+)/);
-        if (skillsMatch) {
-          parsed.skills = skillsMatch[1].split(/,|;|\band\b/).map(s => s.trim()).filter(s => s.length > 0);
+        if (isPDF) {
+          // Extract text from PDF
+          const require = createRequire(import.meta.url);
+          const pdfParse = require('pdf-parse');
+          const pdfData = await pdfParse(buffer);
+          rawText = pdfData.text || '';
+        } else {
+          // Extract text from DOCX
+          const result = await mammoth.extractRawText({ buffer });
+          rawText = result.value || '';
         }
+      } catch (extractError) {
+        app.logger.error({ err: extractError, filename: fileData.filename }, 'Text extraction failed');
+        // Fallback: try UTF-8
+        rawText = buffer.toString('utf-8');
       }
 
-      app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
+      app.logger.info({ textLength: rawText.length, filename: fileData.filename }, 'Text extracted from file');
+
+      // Check if text is empty or whitespace only
+      if (!rawText || rawText.trim().length === 0) {
+        return reply.status(422).send({ error: 'Could not extract text from this file. Please try a different format.' });
+      }
+
       return {
         raw_text: rawText,
-        parsed,
+        filename: fileData.filename,
       };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id, stack: (error as Error).stack }, 'Failed to parse CV');
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to parse CV');
       return reply.status(500).send({ error: 'Failed to parse CV file' });
     }
   });
