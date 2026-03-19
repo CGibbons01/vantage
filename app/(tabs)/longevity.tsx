@@ -172,11 +172,13 @@ export default function LongevityScreen() {
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LongevityResult | null>(null);
+  const [analyseError, setAnalyseError] = useState<string | null>(null);
 
   const handleAnalyse = async () => {
     console.log('[Longevity] Analyse My Career pressed');
     setLoading(true);
     setResult(null);
+    setAnalyseError(null);
     try {
       const [cvText, profile] = await Promise.all([
         AsyncStorage.getItem(USER_CV_KEY),
@@ -185,19 +187,31 @@ export default function LongevityScreen() {
 
       console.log('[Longevity] CV text length:', cvText?.length ?? 0, 'job_title:', profile?.job_title, 'industry:', profile?.industry);
 
+      if (!cvText) {
+        console.log('[Longevity] No CV found in AsyncStorage');
+        Alert.alert(
+          'No CV Found',
+          'Please upload your CV on the Dashboard first so we can analyse your career.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+
       const payload = {
-        cv_text: cvText || '',
+        cv_text: cvText,
         job_title: profile?.job_title || '',
         industry: profile?.industry || '',
       };
 
-      console.log('[Longevity] POST /api/longevity/analyze');
+      console.log('[Longevity] POST /api/longevity/analyze — payload cv_text length:', cvText.length);
       const data = await authenticatedPost<LongevityResult>('/api/longevity/analyze', payload);
       console.log('[Longevity] Analysis complete, longevity_score:', data.longevity_score);
       setResult(data);
     } catch (e: any) {
       console.error('[Longevity] Analysis error:', e);
-      Alert.alert('Analysis Failed', e?.message || 'Could not analyse your career. Please try again.');
+      const msg = e?.message || 'Could not analyse your career. Please try again.';
+      setAnalyseError(msg);
     } finally {
       setLoading(false);
     }
@@ -263,6 +277,12 @@ export default function LongevityScreen() {
         {!result ? (
           /* Empty state */
           <View style={styles.emptyCard}>
+            {analyseError != null && (
+              <View style={styles.errorBanner}>
+                <AlertTriangle size={14} color={COLORS.error} />
+                <Text style={styles.errorBannerText}>{analyseError}</Text>
+              </View>
+            )}
             <View style={styles.emptyIconRing}>
               <Shield size={40} color={COLORS.accent} />
             </View>

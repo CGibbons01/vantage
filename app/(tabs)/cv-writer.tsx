@@ -289,6 +289,14 @@ export default function CVWriterScreen() {
     }
   };
 
+  const getCvMimeType = (filename: string): string => {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (lower.endsWith('.doc')) return 'application/msword';
+    return 'application/pdf';
+  };
+
   const handleUploadFile = async () => {
     console.log('[CVWriter] Upload CV file pressed');
     let pickerResult: DocumentPicker.DocumentPickerResult | null = null;
@@ -296,6 +304,7 @@ export default function CVWriterScreen() {
       pickerResult = await DocumentPicker.getDocumentAsync({
         type: [
           'application/pdf',
+          'application/msword',
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ],
         copyToCacheDirectory: true,
@@ -314,7 +323,9 @@ export default function CVWriterScreen() {
     const asset = pickerResult.assets[0];
     if (!asset) return;
 
-    console.log('[CVWriter] File selected:', asset.name, 'size:', asset.size);
+    const assetName = asset.name || 'cv.pdf';
+    const assetMime = getCvMimeType(assetName);
+    console.log('[CVWriter] File selected:', assetName, 'mime:', assetMime, 'size:', asset.size);
     setUploadingFile(true);
 
     try {
@@ -326,15 +337,15 @@ export default function CVWriterScreen() {
         const blobResponse = await fetch(asset.uri);
         if (!blobResponse.ok) throw new Error('Could not read file');
         const blob = await blobResponse.blob();
-        formData.append('file', blob, asset.name || 'cv.pdf');
+        formData.append('file', blob, assetName);
         console.log('[CVWriter] Appended blob to FormData, size:', blob.size);
       } else {
         formData.append('file', {
           uri: asset.uri,
-          name: asset.name || 'cv.pdf',
-          type: asset.mimeType || 'application/pdf',
+          name: assetName,
+          type: assetMime,
         } as any);
-        console.log('[CVWriter] Appended native file to FormData');
+        console.log('[CVWriter] Appended native file to FormData, mime:', assetMime);
       }
 
       const parseUrl = `${BACKEND_URL}/api/cv/parse`;
@@ -597,7 +608,7 @@ export default function CVWriterScreen() {
               ) : (
                 <>
                   <Upload size={16} color={COLORS.accent} />
-                  <Text style={styles.uploadFileBtnText}>Upload CV File</Text>
+                  <Text style={styles.uploadFileBtnText}>Upload PDF or Word document</Text>
                 </>
               )}
             </AnimatedPressable>
