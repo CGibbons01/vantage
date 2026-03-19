@@ -132,7 +132,8 @@ export default function PaywallScreen() {
   };
 
   const handleClose = () => {
-    router.replace("/(tabs)/(home)");
+    console.log('[Paywall] Close button pressed');
+    router.replace("/(tabs)");
   };
 
   // Handle web mock purchase (replicates RevenueCat test store flow for web preview)
@@ -148,9 +149,8 @@ export default function PaywallScreen() {
 
   // Handle app store links for web
   const handleDownloadApp = () => {
-    // TODO: Replace with your actual app store URLs
-    const iosUrl = "https://apps.apple.com/app/your-app-id";
-    const androidUrl = "https://play.google.com/store/apps/details?id=your.app.id";
+    const iosUrl = "https://apps.apple.com/app/vantage-ai-recruitment";
+    const androidUrl = "https://play.google.com/store/apps/details?id=com.vantage.airecruitment";
 
     // On web, we can't detect which device the user has, so show both options
     Alert.alert(

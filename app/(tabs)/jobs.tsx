@@ -196,7 +196,7 @@ const CATEGORY_CHIPS = [
 export default function JobsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, packages } = useSubscription();
 
   const [keywords, setKeywords] = useState('');
   const [location, setLocation] = useState('');
@@ -333,7 +333,7 @@ export default function JobsScreen() {
           style={styles.unlockBtn}
           onPress={() => { console.log('[Jobs] Navigate to paywall'); router.push('/paywall'); }}
         >
-          <Text style={styles.unlockBtnText}>Unlock Job Search — $15/month</Text>
+          <Text style={styles.unlockBtnText}>{`Unlock Job Search — ${packages[0]?.product.priceString ?? '$15'}/month`}</Text>
         </AnimatedPressable>
       </View>
     );

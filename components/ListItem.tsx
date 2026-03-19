@@ -10,7 +10,6 @@ import Animated, {
 } from "react-native-reanimated";
 import Reanimated from "react-native-reanimated";
 import { appleRed, borderColor } from "@/constants/Colors";
-import { IconCircle } from "./IconCircle";
 import { IconSymbol } from "./IconSymbol";
 
 configureReanimatedLogger({ strict: false });
@@ -37,7 +36,7 @@ export default function ListItem({ listId }: { listId: string }) {
         }}
       >
         <Reanimated.View style={[styleAnimation, styles.rightAction]}>
-          <IconSymbol name="trash.fill" size={24} color="white" />
+          <IconSymbol ios_icon_name="trash.fill" android_material_icon_name="delete" size={24} color="white" />
         </Reanimated.View>
       </Pressable>
     );
@@ -89,7 +88,7 @@ export const NicknameCircle = ({
         },
       ]}
     >
-      {isEllipsis ? "..." : nickname[0].toUpperCase()}
+      {isEllipsis ? "..." : (nickname && nickname.length > 0 ? nickname[0].toUpperCase() : '?')}
     </Text>
   );
 };

@@ -1,10 +1,11 @@
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
+import { Platform } from "react-native";
 import { ExtensionStorage } from "@bacons/apple-targets";
 
 // Initialize storage with your group ID
 const storage = new ExtensionStorage(
-  "group.com.<user_name>.<app_name>"
+  "group.com.vantage.airecruitment"
 );
 
 type WidgetContextType = {
@@ -19,12 +20,16 @@ export function WidgetProvider({ children }: { children: React.ReactNode }) {
     // set widget_state to null if we want to reset the widget
     // storage.set("widget_state", null);
 
-    // Refresh widget
-    ExtensionStorage.reloadWidget();
+    // Refresh widget (iOS only)
+    if (Platform.OS === "ios") {
+      ExtensionStorage.reloadWidget();
+    }
   }, []);
 
   const refreshWidget = useCallback(() => {
-    ExtensionStorage.reloadWidget();
+    if (Platform.OS === "ios") {
+      ExtensionStorage.reloadWidget();
+    }
   }, []);
 
   return (

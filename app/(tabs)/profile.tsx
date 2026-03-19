@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,13 +21,14 @@ import {
   Linkedin,
   Briefcase,
   GraduationCap,
-  ChevronRight,
-  X,
+  Upload,
 } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticatedGet } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { resetOnboarding } from '@/utils/onboardingStorage';
 
 interface Experience {
   title: string;
@@ -98,8 +100,9 @@ export default function ProfileScreen() {
     console.log('[Profile] Sign out confirmed');
     setShowSignOutModal(false);
     try {
+      await resetOnboarding();
       await signOut();
-      router.replace('/auth-screen');
+      router.replace('/welcome');
     } catch (e: any) {
       console.error('[Profile] Sign out error:', e);
     }
@@ -137,7 +140,16 @@ export default function ProfileScreen() {
       >
         {/* Header */}
         <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <View style={styles.headerLeft}>
+            <Pressable
+              onPress={() => { console.log('[Profile] Back button pressed'); router.back(); }}
+              style={styles.backBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+            </Pressable>
+            <Text style={styles.headerTitle}>Profile</Text>
+          </View>
           <AnimatedPressable
             style={styles.editBtn}
             onPress={() => {
@@ -255,6 +267,29 @@ export default function ProfileScreen() {
           </View>
         ) : null}
 
+        {/* Empty State — no CV uploaded */}
+        {!profile ? (
+          <View style={styles.emptyStateCard}>
+            <View style={styles.emptyStateIconCircle}>
+              <Upload size={24} color={COLORS.accent} />
+            </View>
+            <Text style={styles.emptyStateTitle}>Complete your profile</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Upload your CV to unlock AI-powered job matching and career insights
+            </Text>
+            <AnimatedPressable
+              style={styles.emptyStateBtn}
+              onPress={() => {
+                console.log('[Profile] Upload CV empty state button pressed');
+                router.push('/(tabs)/cv-writer');
+              }}
+            >
+              <Upload size={16} color="#000" />
+              <Text style={styles.emptyStateBtnText}>Upload CV</Text>
+            </AnimatedPressable>
+          </View>
+        ) : null}
+
         {/* Sign Out */}
         <AnimatedPressable
           style={styles.signOutBtn}
@@ -309,6 +344,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  backBtn: {
+    marginRight: 4,
   },
   headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
   editBtn: {
@@ -391,6 +434,39 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error,
   },
   signOutText: { fontSize: 15, fontWeight: '700', color: COLORS.error },
+  emptyStateCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+  },
+  emptyStateIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.accentDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.25)',
+  },
+  emptyStateTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' },
+  emptyStateSubtext: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  emptyStateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: COLORS.accent,
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  emptyStateBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

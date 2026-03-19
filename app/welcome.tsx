@@ -47,6 +47,7 @@ function FeatureRow({ icon, title, description, delay, iconBg }: FeatureRowProps
         useNativeDriver: true,
       }),
     ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const badgeStyle = {
@@ -96,6 +97,7 @@ export default function WelcomeScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleGetStarted = () => {

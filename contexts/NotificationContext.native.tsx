@@ -44,7 +44,7 @@ let _oneSignal: OneSignalModule | null = null;
 function getOneSignal(): OneSignalModule | null {
   if (_oneSignal) return _oneSignal;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require("react-native-onesignal") as OneSignalModule;
     // Verify the native module is actually registered before using it
     if (!mod?.OneSignal) {
