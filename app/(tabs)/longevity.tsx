@@ -276,10 +276,10 @@ export default function LongevityScreen() {
                 { icon: <TrendingUp size={16} color={COLORS.accent} />, text: 'Industry outlook' },
                 { icon: <Zap size={16} color={COLORS.accent} />, text: 'Future-proof skill gaps' },
                 { icon: <MapPin size={16} color={COLORS.accent} />, text: 'Career pivot roadmap' },
-              ].map((f, i) => (
+              ].map((feature, i) => (
                 <View key={i} style={styles.emptyFeatureRow}>
-                  {f.icon}
-                  <Text style={styles.emptyFeatureText}>{f.text}</Text>
+                  {feature.icon}
+                  <Text style={styles.emptyFeatureText}>{feature.text}</Text>
                 </View>
               ))}
             </View>
