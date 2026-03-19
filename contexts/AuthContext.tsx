@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
@@ -70,24 +70,26 @@ function openOAuthPopup(provider: string): Promise<string> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Prevent concurrent fetchUser calls from stomping each other
+  const fetchingRef = useRef(false);
 
   useEffect(() => {
+    // Initial session check on mount — with a 3-second timeout safety net
     fetchUser();
 
     if (Platform.OS !== "web") {
-      // On native, the expoClient plugin handles the deep link internally and
-      // stores the session token. We wait 800ms after the deep link fires so
-      // the plugin has time to complete the token exchange before we call
-      // getSession() — otherwise we read an empty session and stay logged out.
+      // Re-fetch after OAuth deep-link callback so the session is picked up
       const subscription = Linking.addEventListener("url", (event) => {
         const url = event.url;
         if (url.startsWith("vantageairecruitment://auth-callback")) {
+          console.log("[AuthContext] Deep-link auth callback received — re-fetching session");
           setTimeout(() => fetchUser(), 800);
         }
       });
 
+      // Refresh session every 5 minutes (silent — does NOT set loading=true)
       const intervalId = setInterval(() => {
-        fetchUser();
+        silentRefresh();
       }, 5 * 60 * 1000);
 
       return () => {
@@ -97,52 +99,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const fetchUser = async () => {
+  // Silent refresh: updates user state without triggering the loading spinner
+  const silentRefresh = async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     try {
-      setLoading(true);
       const session = await authClient.getSession();
       if (session?.data?.user) {
         setUser(session.data.user as User);
         if (session.data.session?.token) {
           await setBearerToken(session.data.session.token);
         }
+      }
+      // Don't clear user on silent refresh failure — keep existing session
+    } catch {
+      // Ignore silent refresh errors
+    } finally {
+      fetchingRef.current = false;
+    }
+  };
+
+  const fetchUser = async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setLoading(true);
+
+    // 3-second timeout — if getSession hangs, treat as logged out
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
+
+    try {
+      console.log("[AuthContext] fetchUser — calling getSession");
+      const session = await Promise.race([
+        authClient.getSession(),
+        timeoutPromise,
+      ]);
+
+      if (session?.data?.user) {
+        console.log("[AuthContext] fetchUser — session found, user:", session.data.user.email);
+        setUser(session.data.user as User);
+        if (session.data.session?.token) {
+          await setBearerToken(session.data.session.token);
+        }
       } else {
+        console.log("[AuthContext] fetchUser — no session, user is null");
         setUser(null);
         await clearAuthTokens();
       }
     } catch (error) {
-      console.error("Failed to fetch user:", error);
+      console.error("[AuthContext] fetchUser error:", error);
       setUser(null);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    console.log('[AuthContext] signInWithEmail called for:', email);
+    console.log("[AuthContext] signInWithEmail called for:", email);
     const { data, error } = await authClient.signIn.email({ email, password });
-    console.log('[AuthContext] signIn.email response — data:', data, 'error:', error);
+    console.log("[AuthContext] signIn.email response — data:", data, "error:", error);
     if (error) {
-      throw new Error(error.message || 'Sign in failed. Please check your credentials.');
+      throw new Error(error.message || "Sign in failed. Please check your credentials.");
     }
     await fetchUser();
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
-    console.log('[AuthContext] signUpWithEmail called for:', email);
+    console.log("[AuthContext] signUpWithEmail called for:", email);
     const { data, error } = await authClient.signUp.email({ email, password, name });
-    console.log('[AuthContext] signUp.email response — data:', data, 'error:', error);
+    console.log("[AuthContext] signUp.email response — data:", data, "error:", error);
     if (error) {
-      throw new Error(error.message || 'Sign up failed. Please try again.');
+      throw new Error(error.message || "Sign up failed. Please try again.");
     }
-    // Immediately sign in after signup so the session is established right away.
-    // Better Auth does not always auto-create a session on signup.
-    console.log('[AuthContext] signUpWithEmail — auto signing in after signup');
+    // Auto sign-in after signup so the session is established immediately
+    console.log("[AuthContext] signUpWithEmail — auto signing in after signup");
     const { data: signInData, error: signInError } = await authClient.signIn.email({ email, password });
-    console.log('[AuthContext] auto signIn after signup — data:', signInData, 'error:', signInError);
+    console.log("[AuthContext] auto signIn after signup — data:", signInData, "error:", signInError);
     if (signInError) {
-      // Signup succeeded but auto-login failed — still fetch session in case it was set
-      console.warn('[AuthContext] auto sign-in after signup failed:', signInError.message);
+      console.warn("[AuthContext] auto sign-in after signup failed:", signInError.message);
     }
     await fetchUser();
   };
@@ -160,8 +194,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         throw new Error(error.message || "Social sign in failed");
       }
-      // expoClient resolves the promise only after the in-app browser closes
-      // and the session is stored — safe to fetch immediately here.
       await fetchUser();
     }
   };
@@ -170,7 +202,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithApple = async () => {
     if (Platform.OS === "ios") {
-      // Native Apple Sign In on iOS — shows the system Face ID / password modal
       const AppleAuthentication = require("expo-apple-authentication");
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
@@ -190,19 +221,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       await fetchUser();
     } else {
-      // Web / Android: OAuth redirect flow
       await signInWithSocial("apple");
     }
   };
 
   const signOut = async () => {
+    console.log("[AuthContext] signOut called");
     try {
       await authClient.signOut();
     } catch (error) {
-      console.error("Sign out failed (API):", error);
+      console.error("[AuthContext] signOut API error:", error);
     } finally {
       setUser(null);
       await clearAuthTokens();
+      console.log("[AuthContext] signOut complete — user cleared");
     }
   };
 
