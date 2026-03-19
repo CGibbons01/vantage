@@ -18,7 +18,6 @@ const TABS = [
   { name: "index", route: "/(tabs)/", icon: "home" as const, label: "Dashboard" },
   { name: "jobs", route: "/(tabs)/jobs", icon: "work" as const, label: "Jobs" },
   { name: "cv-writer", route: "/(tabs)/cv-writer", icon: "description" as const, label: "CV Writer" },
-  { name: "longevity", route: "/(tabs)/longevity", icon: "shield" as const, label: "Longevity" },
   { name: "cover-letter", route: "/(tabs)/cover-letter", icon: "mail" as const, label: "Cover Letter" },
   { name: "applications", route: "/(tabs)/applications", icon: "list" as const, label: "Applications" },
 ];
@@ -41,7 +40,6 @@ export default function TabLayout() {
         <Tabs.Screen name="index" />
         <Tabs.Screen name="jobs" />
         <Tabs.Screen name="cv-writer" />
-        <Tabs.Screen name="longevity" />
         <Tabs.Screen name="cover-letter" />
         <Tabs.Screen name="applications" />
         <Tabs.Screen name="notifications" options={{ href: null }} />
