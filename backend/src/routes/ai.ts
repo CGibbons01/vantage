@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
 import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
+import mammoth from 'mammoth';
 import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
@@ -769,150 +770,72 @@ Return ONLY valid JSON matching this schema:
   // POST /api/cv/parse
   fastify.post('/api/cv/parse', {
     schema: {
-      description: 'Parse uploaded CV file (PDF or DOCX) and extract structured data',
+      description: 'Parse uploaded CV file (PDF or Word) and extract text',
       tags: ['ai', 'cv'],
       response: {
         200: {
           type: 'object',
           properties: {
-            raw_text: { type: 'string' },
-            parsed: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                email: { type: 'string' },
-                phone: { type: 'string' },
-                location: { type: 'string' },
-                headline: { type: 'string' },
-                summary: { type: 'string' },
-                linkedin_url: { type: 'string' },
-                skills: { type: 'array', items: { type: 'string' } },
-                experience: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      title: { type: 'string' },
-                      company: { type: 'string' },
-                      duration: { type: 'string' },
-                      description: { type: 'string' },
-                    },
-                  },
-                },
-                education: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      degree: { type: 'string' },
-                      institution: { type: 'string' },
-                      year: { type: 'string' },
-                    },
-                  },
-                },
-              },
-            },
+            text: { type: 'string' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
-        401: { type: 'object', properties: { error: { type: 'string' } } },
-        500: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' }, details: { type: 'string' } } },
       },
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
-
-    app.logger.info({ userId: session.user.id }, 'Parsing CV file');
+    app.logger.info({}, 'CV parse request received (public endpoint)');
 
     try {
       const fileData = await request.file();
 
       if (!fileData) {
+        app.logger.warn({}, 'No file uploaded');
         return reply.status(400).send({ error: 'No file uploaded' });
       }
 
-      const buffer = await fileData.toBuffer();
-      const rawText = await extractTextFromFile(buffer, fileData.mimetype, fileData.filename);
+      const filename = fileData.filename.toLowerCase();
+      const mimetype = fileData.mimetype.toLowerCase();
 
-      if (!rawText || rawText.trim().length === 0) {
-        return reply.status(400).send({ error: 'Could not extract text from file' });
+      // Detect file type by mimetype and filename extension
+      const isPDF = mimetype.includes('pdf') || filename.endsWith('.pdf');
+      const isWord =
+        mimetype.includes('word') ||
+        mimetype.includes('officedocument') ||
+        filename.endsWith('.doc') ||
+        filename.endsWith('.docx');
+
+      if (!isPDF && !isWord) {
+        app.logger.warn({ mimetype, filename }, 'Unsupported file type');
+        return reply.status(400).send({
+          error: 'Unsupported file type. Please upload a PDF or Word document.'
+        });
       }
 
-      // Use AI to parse the CV text with fallback values
-      let parsed: any = {
-        name: null,
-        email: null,
-        phone: null,
-        location: null,
-        headline: null,
-        summary: null,
-        linkedin_url: null,
-        skills: [],
-        experience: [],
-        education: [],
-      };
+      const buffer = await fileData.toBuffer();
+      let extractedText = '';
 
       try {
-        const parsePrompt = `Parse this CV text and return ONLY valid JSON. Return exactly this structure: {name, email, phone, location, headline, summary, linkedin_url, skills, experience, education}. Use null for missing strings, empty arrays for missing lists. CV: ${rawText.substring(0, 2000)}`;
-
-        const { object } = await generateObject({
-          model: gateway('openai/gpt-4o-mini'),
-          schema: z.object({
-            name: z.string().nullable(),
-            email: z.string().nullable(),
-            phone: z.string().nullable(),
-            location: z.string().nullable(),
-            headline: z.string().nullable(),
-            summary: z.string().nullable(),
-            linkedin_url: z.string().nullable(),
-            skills: z.array(z.string()).default([]),
-            experience: z.array(z.object({
-              title: z.string().default(''),
-              company: z.string().default(''),
-              duration: z.string().default(''),
-              description: z.string().default(''),
-            }).optional()).default([]),
-            education: z.array(z.object({
-              degree: z.string().default(''),
-              institution: z.string().default(''),
-              year: z.string().default(''),
-            }).optional()).default([]),
-          }),
-          prompt: parsePrompt,
+        app.logger.info({ filename }, 'Extracting text from file');
+        extractedText = await extractTextFromFile(buffer, fileData.mimetype, fileData.filename);
+      } catch (extractError) {
+        const errorMsg = extractError instanceof Error ? extractError.message : String(extractError);
+        app.logger.error({ err: extractError, filename }, 'Text extraction failed');
+        return reply.status(500).send({
+          error: 'Failed to parse CV',
+          details: errorMsg
         });
-
-        parsed = object;
-        app.logger.info({ userId: session.user.id }, 'CV parsed with AI successfully');
-      } catch (aiError) {
-        app.logger.warn({ err: aiError, userId: session.user.id }, 'AI parsing failed, using extraction fallback');
-        // Extract basic info from raw text using simple heuristics
-        const lines = rawText.split('\n');
-        parsed.name = lines[0]?.trim() || null;
-
-        // Try to find email
-        const emailMatch = rawText.match(/[\w\.-]+@[\w\.-]+\.\w+/);
-        parsed.email = emailMatch ? emailMatch[0] : null;
-
-        // Try to find phone
-        const phoneMatch = rawText.match(/[\d\s\-\+\(\)]{10,}/);
-        parsed.phone = phoneMatch ? phoneMatch[0].trim() : null;
-
-        // Extract skills from text
-        const skillsMatch = rawText.match(/[Ss]kills?:?\s*(.+)/);
-        if (skillsMatch) {
-          parsed.skills = skillsMatch[1].split(/,|;|\band\b/).map(s => s.trim()).filter(s => s.length > 0);
-        }
       }
 
-      app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
-      return {
-        raw_text: rawText,
-        parsed,
-      };
+      app.logger.info({ filename, textLength: extractedText.length }, 'Text extracted successfully');
+      return { text: extractedText };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id, stack: (error as Error).stack }, 'Failed to parse CV');
-      return reply.status(500).send({ error: 'Failed to parse CV file' });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      app.logger.error({ err: error, stack: error instanceof Error ? error.stack : undefined }, 'CV parse failed');
+      return reply.status(500).send({
+        error: 'Failed to parse CV',
+        details: errorMsg
+      });
     }
   });
 
