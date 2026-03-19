@@ -73,12 +73,24 @@ export default function HomeScreen() {
     fetchProfile();
   }, [fetchProfile]);
 
+  const getMimeType = (filename: string): string => {
+    const lower = filename.toLowerCase();
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lower.endsWith(".doc")) return "application/msword";
+    return "application/pdf";
+  };
+
   const handleUploadCV = async () => {
     console.log("[Dashboard] Upload CV button pressed");
     setUploadError(null);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: [
+          "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ],
         copyToCacheDirectory: true,
       });
 
@@ -88,7 +100,9 @@ export default function HomeScreen() {
       }
 
       const file = result.assets[0];
-      console.log("[Dashboard] PDF selected:", file.name, file.uri);
+      const fileName = file.name ?? "cv.pdf";
+      const mimeType = getMimeType(fileName);
+      console.log("[Dashboard] CV file selected:", fileName, "mime:", mimeType, "uri:", file.uri);
 
       setUploading(true);
 
@@ -96,8 +110,8 @@ export default function HomeScreen() {
       const formData = new FormData();
       formData.append("cv", {
         uri: file.uri,
-        name: file.name ?? "cv.pdf",
-        type: "application/pdf",
+        name: fileName,
+        type: mimeType,
       } as any);
 
       console.log("[Dashboard] POST /api/cv/score — uploading CV");
@@ -110,7 +124,7 @@ export default function HomeScreen() {
       if (!response.ok) {
         const text = await response.text();
         console.log("[Dashboard] CV upload failed:", response.status, text);
-        throw new Error(`Upload failed (${response.status})`);
+        throw new Error(`Upload failed (${response.status}): ${text.slice(0, 120)}`);
       }
 
       const data: CvScoreResult = await response.json();
@@ -179,7 +193,7 @@ export default function HomeScreen() {
             ) : (
               <>
                 <Ionicons name="cloud-upload-outline" size={18} color="#0F172A" style={styles.uploadButtonIcon} />
-                <Text style={styles.uploadButtonText}>Upload PDF</Text>
+                <Text style={styles.uploadButtonText}>Upload CV (PDF or Word)</Text>
               </>
             )}
           </TouchableOpacity>

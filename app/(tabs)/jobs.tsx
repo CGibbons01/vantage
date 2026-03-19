@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TextInput,
   ActivityIndicator,
   RefreshControl,
@@ -181,6 +182,17 @@ function JobCard({
   );
 }
 
+const CATEGORY_CHIPS = [
+  { label: 'Hospitality', keywords: 'Hospitality' },
+  { label: 'Technology', keywords: 'Software Engineer' },
+  { label: 'Finance', keywords: 'Finance' },
+  { label: 'Healthcare', keywords: 'Nurse' },
+  { label: 'Trades', keywords: 'Electrician' },
+  { label: 'Retail', keywords: 'Retail' },
+  { label: 'Executive', keywords: 'CEO' },
+  { label: 'Creative', keywords: 'Designer' },
+];
+
 export default function JobsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -269,6 +281,34 @@ export default function JobsScreen() {
     searchJobs(1, false);
   };
 
+  const handleCategoryChip = (chip: { label: string; keywords: string }) => {
+    console.log('[Jobs] Category chip pressed:', chip.label, '→', chip.keywords);
+    setKeywords(chip.keywords);
+    // Trigger search with the chip keywords directly
+    setLoading(true);
+    setError('');
+    const params = new URLSearchParams();
+    params.set('keywords', chip.keywords);
+    if (location.trim()) params.set('location', location.trim());
+    params.set('page', '1');
+    authenticatedGet<JobsResponse>(`/api/jobs/search?${params.toString()}`)
+      .then((data) => {
+        const newJobs = data?.jobs ?? [];
+        console.log(`[Jobs] Category search got ${newJobs.length} jobs`);
+        setJobs(newJobs);
+        setMatchMap({});
+        runJobMatching(newJobs);
+        setHasMore(newJobs.length >= 10);
+        setPage(1);
+        setSearched(true);
+      })
+      .catch((e: any) => {
+        console.error('[Jobs] Category search error:', e);
+        setError('Failed to search jobs. Please try again.');
+      })
+      .finally(() => setLoading(false));
+  };
+
   const handleLoadMore = () => {
     console.log('[Jobs] Load more pressed, page:', page + 1);
     searchJobs(page + 1, true);
@@ -312,7 +352,7 @@ export default function JobsScreen() {
           <Search size={16} color={COLORS.textSecondary} />
           <TextInput
             style={styles.searchText}
-            placeholder="Job title, keywords..."
+            placeholder="e.g. Barista, Software Engineer, CEO, Nurse..."
             placeholderTextColor={COLORS.textMuted}
             value={keywords}
             onChangeText={setKeywords}
@@ -320,6 +360,7 @@ export default function JobsScreen() {
             onSubmitEditing={handleSearch}
           />
         </View>
+        <Text style={styles.searchHint}>Search any role across all industries</Text>
         <View style={styles.searchInput}>
           <MapPin size={16} color={COLORS.textSecondary} />
           <TextInput
@@ -339,6 +380,26 @@ export default function JobsScreen() {
           }
         </AnimatedPressable>
       </View>
+
+      {/* Category chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chipsContent}
+      >
+        {CATEGORY_CHIPS.map((chip) => (
+          <AnimatedPressable
+            key={chip.label}
+            style={[styles.categoryChip, keywords === chip.keywords && styles.categoryChipActive]}
+            onPress={() => handleCategoryChip(chip)}
+          >
+            <Text style={[styles.categoryChipText, keywords === chip.keywords && styles.categoryChipTextActive]}>
+              {chip.label}
+            </Text>
+          </AnimatedPressable>
+        ))}
+      </ScrollView>
 
       {error ? (
         <View style={styles.errorBanner}>
@@ -371,12 +432,12 @@ export default function JobsScreen() {
             <View style={styles.emptyState}>
               <Briefcase size={48} color={COLORS.textMuted} />
               <Text style={styles.emptyTitle}>
-                {searched ? 'No jobs found' : 'Search for your next role'}
+                {searched ? 'No jobs found' : 'Find your next opportunity'}
               </Text>
               <Text style={styles.emptySubtitle}>
                 {searched
-                  ? 'Try different keywords or location.'
-                  : 'Enter keywords and location above to find matching jobs.'}
+                  ? 'Try different keywords or broaden your location.'
+                  : 'Search any job title or industry — from barista to CEO, we\'ve got you covered'}
               </Text>
             </View>
           ) : null
@@ -431,7 +492,30 @@ const styles = StyleSheet.create({
   unlockBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
   header: { paddingHorizontal: 20, paddingVertical: 16 },
   headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
-  searchSection: { paddingHorizontal: 20, gap: 10, marginBottom: 12 },
+  searchSection: { paddingHorizontal: 20, gap: 10, marginBottom: 4 },
+  searchHint: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: -4,
+    marginBottom: 2,
+    paddingHorizontal: 2,
+  },
+  chipsScroll: { marginBottom: 10 },
+  chipsContent: { paddingHorizontal: 20, gap: 8, paddingVertical: 4 },
+  categoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  categoryChipActive: {
+    backgroundColor: COLORS.accentMuted,
+    borderColor: 'rgba(245,158,11,0.4)',
+  },
+  categoryChipText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
+  categoryChipTextActive: { color: COLORS.accent },
   searchInput: {
     flexDirection: 'row',
     alignItems: 'center',
