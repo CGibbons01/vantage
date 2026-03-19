@@ -184,16 +184,7 @@ export default function RootLayout() {
                           headerTintColor: "#F8FAFC",
                         }}
                       />
-                      <Stack.Screen
-                        name="notifications"
-                        options={{
-                          headerShown: true,
-                          headerTitle: "Job Alerts",
-                          headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: "#0F172A" },
-                          headerTintColor: "#F8FAFC",
-                        }}
-                      />
+
                       <Stack.Screen
                         name="job/[id]"
                         options={{
