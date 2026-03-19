@@ -464,6 +464,18 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 401);
   });
 
+  test("Update profile without auth", async () => {
+    const res = await api("/api/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        headline: "Senior Developer",
+        summary: "Test summary",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
   test("Search jobs without auth", async () => {
     const res = await api("/api/jobs/search?keywords=developer");
     await expectStatus(res, 401);
@@ -476,6 +488,37 @@ describe("API Integration Tests", () => {
 
   test("List applications without auth", async () => {
     const res = await api("/api/applications");
+    await expectStatus(res, 401);
+  });
+
+  test("Create application without auth", async () => {
+    const res = await api("/api/applications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: "job-123",
+        job_title: "Developer",
+        company: "Tech Corp",
+        location: "London",
+        job_url: "https://example.com/jobs/123",
+      }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Update application without auth", async () => {
+    const res = await api("/api/applications/00000000-0000-0000-0000-000000000000", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "applied" }),
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Delete application without auth", async () => {
+    const res = await api("/api/applications/00000000-0000-0000-0000-000000000000", {
+      method: "DELETE",
+    });
     await expectStatus(res, 401);
   });
 

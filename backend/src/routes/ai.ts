@@ -513,11 +513,18 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       }
 
       cvFilename = cvFile.filename;
-      const mimeType = cvFile.mimetype;
-      const validMimeTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+      const mimeTypeLower = (cvFile.mimetype || '').toLowerCase();
+      const filenameLower = (cvFile.filename || '').toLowerCase();
 
-      if (!validMimeTypes.includes(mimeType)) {
-        return reply.status(400).send({ error: `Unsupported file type: ${mimeType}. Accepted types: PDF, Word, plain text` });
+      const isPDF = mimeTypeLower === 'application/pdf' || filenameLower.endsWith('.pdf');
+      const isWord = mimeTypeLower === 'application/msword' ||
+                     mimeTypeLower === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                     filenameLower.endsWith('.doc') ||
+                     filenameLower.endsWith('.docx');
+      const isText = mimeTypeLower === 'text/plain' || filenameLower.endsWith('.txt');
+
+      if (!isPDF && !isWord && !isText) {
+        return reply.status(400).send({ error: `Unsupported file type. Please upload a PDF or Word document.` });
       }
 
       // Get file buffer
@@ -533,19 +540,20 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       }
 
       // Extract text based on file type
-      app.logger.info({ fileName: cvFilename, mimeType }, 'Extracting text from CV file');
+      app.logger.info({ fileName: cvFilename, mimeTypeLower }, 'Extracting text from CV file');
       try {
-        if (mimeType === 'application/pdf') {
+        if (isPDF) {
           const require = createRequire(import.meta.url);
           const pdfParseModule = require('pdf-parse');
           const pdfParse = typeof pdfParseModule === 'function' ? pdfParseModule : pdfParseModule.default;
           const pdfData = await pdfParse(buffer);
           cvText = pdfData.text;
-        } else if (mimeType === 'text/plain') {
+        } else if (isText) {
           cvText = buffer.toString('utf-8');
         } else {
-          // For Word documents, use plaintext fallback
-          cvText = buffer.toString('utf-8', 0, Math.min(5000, buffer.length));
+          // Word documents
+          const mammothResult = await mammoth.extractRawText({ buffer });
+          cvText = mammothResult.value;
         }
 
         if (!cvText || cvText.trim().length === 0) {
@@ -780,11 +788,15 @@ Return ONLY valid JSON matching this schema:
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' }, details: { type: 'string' } } },
       },
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
-    app.logger.info({}, 'CV parse request received (public endpoint)');
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    app.logger.info({ userId: session.user.id }, 'CV parse request received');
 
     try {
       const fileData = await request.file();
