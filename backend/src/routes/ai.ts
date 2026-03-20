@@ -502,17 +502,16 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
       }
 
-      // Read file as UTF-8 string
+      // Read file buffer and extract text
       let cvText = '';
       let cvFilename = 'cv_file';
       try {
         app.logger.debug({ fieldname: cvFile.fieldname }, 'Reading CV file');
 
-        // Read file content using stream methods
+        // Read file content into buffer
         const chunks: Buffer[] = [];
-
-        // Handle the stream by consuming it
         const stream = cvFile as any;
+
         if (typeof stream[Symbol.asyncIterator] === 'function') {
           // Async iterable stream
           for await (const chunk of stream) {
@@ -529,15 +528,40 @@ Return ONLY a JSON array of match objects, no other text. Example format:
           });
         } else {
           app.logger.error({ streamKeys: Object.keys(stream).slice(0, 10) }, 'Stream type not recognized');
-          return reply.status(400).send({ error: 'Failed to read CV file - unknown stream type' });
+          return reply.status(400).send({ error: 'Failed to read CV file' });
         }
 
         const buffer = Buffer.concat(chunks);
-        cvText = buffer.toString('utf-8');
+        if (buffer.length === 0) {
+          app.logger.warn('CV file is empty');
+          return reply.status(400).send({ error: 'CV file is empty' });
+        }
+
+        // Extract metadata
         cvFilename = (cvFile as any).filename || 'cv_file';
-        app.logger.debug({ bufferSize: buffer.length, filename: cvFilename }, 'CV file read successfully');
+        app.logger.debug({ filename: cvFilename, bufferSize: buffer.length }, 'CV file buffer read');
+
+        // Extract text from file
+        try {
+          // Try extractTextFromFile first for proper PDF/DOCX handling
+          cvText = await extractTextFromFile(buffer, cvFilename);
+          app.logger.debug({ textLength: cvText.length }, 'CV text extracted using extractTextFromFile');
+        } catch (extractError) {
+          // Fallback: treat as plain text if extraction fails
+          app.logger.debug({ err: extractError }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
+          try {
+            cvText = buffer.toString('utf-8');
+            if (!cvText || cvText.trim().length === 0) {
+              throw new Error('Buffer conversion produced empty text');
+            }
+            app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
+          } catch (fallbackError) {
+            app.logger.warn({ err: fallbackError }, 'UTF-8 fallback also failed');
+            throw new Error('Unable to extract text from CV file: ' + (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
+          }
+        }
       } catch (readError) {
-        app.logger.error({ err: readError }, 'Failed to read CV file content');
+        app.logger.error({ err: readError }, 'Failed to read or extract CV file content');
         return reply.status(400).send({ error: 'Failed to read CV file' });
       }
 
@@ -760,17 +784,16 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
       }
 
-      // Read file as UTF-8 string
+      // Read file buffer and extract text
       let cvText = '';
       let cvFilename = 'cv_file';
       try {
         app.logger.debug({ fieldname: cvFile.fieldname }, 'Reading CV file');
 
-        // Read file content using stream methods
+        // Read file content into buffer
         const chunks: Buffer[] = [];
-
-        // Handle the stream by consuming it
         const stream = cvFile as any;
+
         if (typeof stream[Symbol.asyncIterator] === 'function') {
           // Async iterable stream
           for await (const chunk of stream) {
@@ -787,15 +810,40 @@ Return ONLY a JSON array of match objects, no other text. Example format:
           });
         } else {
           app.logger.error({ streamKeys: Object.keys(stream).slice(0, 10) }, 'Stream type not recognized');
-          return reply.status(400).send({ error: 'Failed to read CV file - unknown stream type' });
+          return reply.status(400).send({ error: 'Failed to read CV file' });
         }
 
         const buffer = Buffer.concat(chunks);
-        cvText = buffer.toString('utf-8');
+        if (buffer.length === 0) {
+          app.logger.warn('CV file is empty');
+          return reply.status(400).send({ error: 'CV file is empty' });
+        }
+
+        // Extract metadata
         cvFilename = (cvFile as any).filename || 'cv_file';
-        app.logger.debug({ bufferSize: buffer.length, filename: cvFilename }, 'CV file read successfully');
+        app.logger.debug({ filename: cvFilename, bufferSize: buffer.length }, 'CV file buffer read');
+
+        // Extract text from file
+        try {
+          // Try extractTextFromFile first for proper PDF/DOCX handling
+          cvText = await extractTextFromFile(buffer, cvFilename);
+          app.logger.debug({ textLength: cvText.length }, 'CV text extracted using extractTextFromFile');
+        } catch (extractError) {
+          // Fallback: treat as plain text if extraction fails
+          app.logger.debug({ err: extractError }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
+          try {
+            cvText = buffer.toString('utf-8');
+            if (!cvText || cvText.trim().length === 0) {
+              throw new Error('Buffer conversion produced empty text');
+            }
+            app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
+          } catch (fallbackError) {
+            app.logger.warn({ err: fallbackError }, 'UTF-8 fallback also failed');
+            throw new Error('Unable to extract text from CV file: ' + (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
+          }
+        }
       } catch (readError) {
-        app.logger.error({ err: readError }, 'Failed to read CV file content');
+        app.logger.error({ err: readError }, 'Failed to read or extract CV file content');
         return reply.status(400).send({ error: 'Failed to read CV file' });
       }
 
