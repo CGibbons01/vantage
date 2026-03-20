@@ -424,7 +424,7 @@ describe("API Integration Tests", () => {
     });
     await expectStatus(res, 200);
     const data = await res.json();
-    expect(data.score).toBeDefined();
+    expect(data.overall_score).toBeDefined();
     expect(data.industry_fit).toBeDefined();
   });
 
@@ -474,7 +474,7 @@ describe("API Integration Tests", () => {
     });
     await expectStatus(res, 200);
     const data = await res.json();
-    expect(data.text).toBeDefined();
+    expect(data.cvText).toBeDefined();
   });
 
   test("Parse CV file - missing file", async () => {
