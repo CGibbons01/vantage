@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { BodyScrollView } from "@/components/BodyScrollView";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -148,8 +149,7 @@ export default function HomeScreen() {
       setUploading(true);
 
       // Read file as base64
-      const { default: FS, EncodingType } = await import('expo-file-system');
-      const base64 = await FS.readAsStringAsync(file.uri, { encoding: EncodingType.Base64 });
+      const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
       console.log('[Dashboard] File read as base64, length:', base64.length);
 
       const token = await getBearerToken();
