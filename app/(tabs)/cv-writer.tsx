@@ -382,10 +382,10 @@ export default function CVWriterScreen() {
         const blobResponse = await fetch(asset.uri);
         if (!blobResponse.ok) throw new Error('Could not read file');
         const blob = await blobResponse.blob();
-        formData.append('file', blob, assetName);
+        formData.append('cv', blob, assetName);
         console.log('[CVWriter] Appended blob to FormData, size:', blob.size);
       } else {
-        formData.append('file', {
+        formData.append('cv', {
           uri: asset.uri,
           name: assetName,
           type: assetMime,
