@@ -546,6 +546,12 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text extracted successfully');
 
+      // Truncate text to 8000 characters for AI scoring
+      const truncatedCvText = cvText.length > 8000 ? cvText.substring(0, 8000) : cvText;
+      if (cvText.length > 8000) {
+        app.logger.debug({ userId: session.user.id, originalLength: cvText.length, truncatedLength: truncatedCvText.length }, 'CV text truncated for AI scoring');
+      }
+
       // Save cv_text to profile
       try {
         await app.db.insert(schema.profiles)
@@ -573,7 +579,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       const scorePrompt = `Analyse this CV and return: an overall_score (0-100) reflecting CV quality and strength, industry_scores as an array of 5-8 relevant industries with scores (0-100) based on how well the CV fits each industry, industry_fit as a short label for the best-fit role/industry, and improvement_tips as 3-5 specific actionable tips to strengthen the CV.
 
 CV:
-${cvText}`;
+${truncatedCvText}`;
 
       const scoreSchema = z.object({
         overall_score: z.number().min(0).max(100),
