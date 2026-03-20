@@ -416,12 +416,19 @@ describe("API Integration Tests", () => {
 
   // CV Scoring AI endpoint
   test("Score CV", async () => {
-    // Upload a CV file for scoring
-    const form = new FormData();
-    form.append("cv", createTestFile("resume.pdf", "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js\nExperience: 5 years", "application/pdf"));
+    const fileContent = "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js\nExperience: 5 years";
+    const file = createTestFile("resume.pdf", fileContent, "application/pdf");
+    const buffer = await file.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+
     const res = await authenticatedApi("/api/cv/score", authToken, {
       method: "POST",
-      body: form,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_base64: base64,
+        file_name: "resume.pdf",
+        mime_type: "application/pdf",
+      }),
     });
     await expectStatus(res, 200);
     const data = await res.json();
@@ -431,11 +438,14 @@ describe("API Integration Tests", () => {
   });
 
   test("Score CV - missing required field", async () => {
-    // Send request without a file
-    const form = new FormData();
     const res = await authenticatedApi("/api/cv/score", authToken, {
       method: "POST",
-      body: form,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_name: "resume.pdf",
+        mime_type: "application/pdf",
+        // missing required: file_base64
+      }),
     });
     await expectStatus(res, 400);
   });
@@ -700,10 +710,19 @@ describe("API Integration Tests", () => {
   });
 
   test("Score CV without auth", async () => {
-    const form = new FormData();
+    const fileContent = "Sample CV content";
+    const file = createTestFile("resume.pdf", fileContent, "application/pdf");
+    const buffer = await file.arrayBuffer();
+    const base64 = Buffer.from(buffer).toString("base64");
+
     const res = await api("/api/cv/score", {
       method: "POST",
-      body: form,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_base64: base64,
+        file_name: "resume.pdf",
+        mime_type: "application/pdf",
+      }),
     });
     await expectStatus(res, 401);
   });
