@@ -472,100 +472,100 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     app.logger.info({ userId: session.user.id }, 'CV score request received');
 
     try {
-      let cvFile: any = null;
       let jobDescription: string | null = null;
-      const receivedFieldnames: string[] = [];
 
-      try {
-        const parts = request.parts();
-        for await (const part of parts) {
-          receivedFieldnames.push(part.fieldname);
-          app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Received multipart part');
+      const parts = request.parts();
+      let fileBuffer = null;
+      let filename = 'upload';
+      let mimetype = 'application/octet-stream';
 
-          // Find the "cv" part by field name, regardless of type classification
-          if (part.fieldname === 'cv' && !cvFile) {
-            app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Found cv part');
-            cvFile = part;
-          } else if (part.fieldname === 'job_description' && part.type === 'field') {
-            jobDescription = part.value as string;
-            app.logger.debug('Job description read successfully');
-          }
-        }
-      } catch (partsError) {
-        app.logger.error({ err: partsError }, 'Error parsing multipart form');
-        return reply.status(400).send({ error: 'Invalid multipart form data' });
-      }
-
-      if (!cvFile) {
-        const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : '(none)';
-        app.logger.warn({ receivedFields: fieldList }, 'No cv field found in multipart form');
-        return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
-      }
-
-      // Read file buffer and extract text
-      let cvText = '';
-      let cvFilename = 'cv_file';
-      try {
-        app.logger.debug({ fieldname: cvFile.fieldname }, 'Reading CV file');
-
-        // Read file content into buffer
-        const chunks: Buffer[] = [];
-        const stream = cvFile as any;
-
-        if (typeof stream[Symbol.asyncIterator] === 'function') {
-          // Async iterable stream
-          for await (const chunk of stream) {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-          }
-        } else if (typeof stream.on === 'function') {
-          // Node.js stream with events
-          await new Promise((resolve, reject) => {
-            stream.on('data', (chunk: any) => {
-              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-            });
-            stream.on('end', resolve);
-            stream.on('error', reject);
+      for await (const part of parts) {
+        const partAny = part as any;
+        if (partAny.fieldname === 'cv') {
+          console.log('cv part shape:', {
+            type: partAny.type,
+            filename: partAny.filename,
+            mimetype: partAny.mimetype,
+            typeofFile: typeof partAny.file,
+            typeofToBuffer: typeof partAny.toBuffer,
           });
-        } else {
-          app.logger.error({ streamKeys: Object.keys(stream).slice(0, 10) }, 'Stream type not recognized');
-          return reply.status(400).send({ error: 'Failed to read CV file' });
-        }
-
-        const buffer = Buffer.concat(chunks);
-        if (buffer.length === 0) {
-          app.logger.warn('CV file is empty');
-          return reply.status(400).send({ error: 'CV file is empty' });
-        }
-
-        // Extract metadata
-        cvFilename = (cvFile as any).filename || 'cv_file';
-        app.logger.debug({ filename: cvFilename, bufferSize: buffer.length }, 'CV file buffer read');
-
-        // Extract text from file
-        try {
-          // Try extractTextFromFile first for proper PDF/DOCX handling
-          cvText = await extractTextFromFile(buffer, cvFilename);
-          app.logger.debug({ textLength: cvText.length }, 'CV text extracted using extractTextFromFile');
-        } catch (extractError) {
-          // Fallback: treat as plain text if extraction fails
-          app.logger.debug({ err: extractError }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
           try {
-            cvText = buffer.toString('utf-8');
-            if (!cvText || cvText.trim().length === 0) {
-              throw new Error('Buffer conversion produced empty text');
+            if (partAny.file) {
+              // file part — stream the chunks
+              const chunks = [];
+              for await (const chunk of partAny.file) {
+                chunks.push(chunk);
+              }
+              fileBuffer = Buffer.concat(chunks);
+              filename = partAny.filename || 'upload';
+              mimetype = partAny.mimetype || 'application/octet-stream';
+            } else if (typeof partAny.toBuffer === 'function') {
+              fileBuffer = await partAny.toBuffer();
+              filename = partAny.filename || 'upload';
+              mimetype = partAny.mimetype || 'application/octet-stream';
+            } else {
+              // field part fallback
+              const val = partAny.value;
+              if (Buffer.isBuffer(val)) {
+                fileBuffer = val;
+              } else if (typeof val === 'string') {
+                fileBuffer = Buffer.from(val, 'binary');
+              }
             }
-            app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
-          } catch (fallbackError) {
-            app.logger.warn({ err: fallbackError }, 'UTF-8 fallback also failed');
-            throw new Error('Unable to extract text from CV file: ' + (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
+          } catch (e) {
+            console.error('Error reading cv part:', e);
           }
+          break;
+        } else if (partAny.fieldname === 'job_description') {
+          jobDescription = partAny.value as string;
         }
-      } catch (readError) {
-        app.logger.error({ err: readError }, 'Failed to read or extract CV file content');
-        return reply.status(400).send({ error: 'Failed to read CV file' });
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        app.logger.warn('File buffer is null or empty');
+        return reply.status(400).send({ error: 'No CV file uploaded' });
+      }
+
+      app.logger.debug({ fileBufferLength: fileBuffer.length, filename }, 'File buffer ready for text extraction');
+
+      // Extract text from file
+      let cvText = '';
+      try {
+        app.logger.debug({ filename, fileBufferLength: fileBuffer.length }, 'Attempting extractTextFromFile');
+        cvText = await extractTextFromFile(fileBuffer, filename);
+        app.logger.debug({ textLength: cvText?.length || 0 }, 'extractTextFromFile completed');
+
+        if (!cvText || cvText.trim().length === 0) {
+          app.logger.warn({ filename }, 'extractTextFromFile returned empty text, trying UTF-8 fallback');
+          cvText = fileBuffer.toString('utf-8');
+          if (!cvText || cvText.trim().length === 0) {
+            app.logger.warn('UTF-8 fallback also produced empty text');
+            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
+          }
+          app.logger.debug({ textLength: cvText.length }, 'UTF-8 fallback succeeded');
+        } else {
+          app.logger.debug({ textLength: cvText.length }, 'CV text extracted successfully');
+        }
+      } catch (extractError) {
+        // Fallback: treat as plain text if extraction fails
+        const extractMsg = extractError instanceof Error ? extractError.message : String(extractError);
+        app.logger.debug({ err: extractError, filename, message: extractMsg }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
+        try {
+          cvText = fileBuffer.toString('utf-8');
+          if (!cvText || cvText.trim().length === 0) {
+            app.logger.warn('UTF-8 conversion produced empty text');
+            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
+          }
+          app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
+        } catch (utf8Error) {
+          const utf8Msg = utf8Error instanceof Error ? utf8Error.message : String(utf8Error);
+          app.logger.error({ err: utf8Error, message: utf8Msg }, 'UTF-8 conversion also failed');
+          throw new Error(`Failed to extract text from file: ${utf8Msg}`);
+        }
       }
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
+      const cvFilename = filename;
 
       // Use OpenAI to score the CV
       const scorePrompt = jobDescription
@@ -582,11 +582,22 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       });
 
       app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV scoring');
-      const { object: scoreData } = await generateObject({
-        model: gateway('openai/gpt-4o'),
-        schema: scoreSchema,
-        prompt: scorePrompt,
-      });
+      let scoreData;
+      try {
+        const result = await generateObject({
+          model: gateway('openai/gpt-4o'),
+          schema: scoreSchema,
+          prompt: scorePrompt,
+        });
+        if (!result || !result.object) {
+          throw new Error('generateObject returned invalid result: no object property');
+        }
+        scoreData = result.object;
+        app.logger.debug({ score: scoreData.overall_score }, 'generateObject returned successfully');
+      } catch (genError) {
+        app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV scoring');
+        throw new Error(`AI generation failed: ${genError instanceof Error ? genError.message : String(genError)}`);
+      }
 
       app.logger.info({ userId: session.user.id, score: scoreData.overall_score }, 'CV scored successfully');
 
@@ -625,8 +636,9 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
+      const details = errorMsg || 'Unknown error occurred';
       app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to score CV');
-      return reply.status(500).send({ error: 'Failed to score CV', details: errorMsg });
+      return reply.status(500).send({ error: 'Failed to score CV', details });
     }
   });
 
@@ -758,96 +770,96 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     app.logger.info({ userId: session.user.id }, 'CV parse request received');
 
     try {
-      let cvFile: any = null;
-      const receivedFieldnames: string[] = [];
+      const parts = request.parts();
+      let fileBuffer = null;
+      let filename = 'upload';
+      let mimetype = 'application/octet-stream';
 
-      try {
-        const parts = request.parts();
-        for await (const part of parts) {
-          receivedFieldnames.push(part.fieldname);
-          app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Received multipart part');
-
-          // Find the "cv" part by field name, regardless of type classification
-          if (part.fieldname === 'cv' && !cvFile) {
-            app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Found cv part');
-            cvFile = part;
-          }
-        }
-      } catch (partsError) {
-        app.logger.error({ err: partsError }, 'Error parsing multipart form');
-        return reply.status(400).send({ error: 'Invalid multipart form data' });
-      }
-
-      if (!cvFile) {
-        const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : '(none)';
-        app.logger.warn({ receivedFields: fieldList }, 'No cv field found in multipart form');
-        return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
-      }
-
-      // Read file buffer and extract text
-      let cvText = '';
-      let cvFilename = 'cv_file';
-      try {
-        app.logger.debug({ fieldname: cvFile.fieldname }, 'Reading CV file');
-
-        // Read file content into buffer
-        const chunks: Buffer[] = [];
-        const stream = cvFile as any;
-
-        if (typeof stream[Symbol.asyncIterator] === 'function') {
-          // Async iterable stream
-          for await (const chunk of stream) {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-          }
-        } else if (typeof stream.on === 'function') {
-          // Node.js stream with events
-          await new Promise((resolve, reject) => {
-            stream.on('data', (chunk: any) => {
-              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-            });
-            stream.on('end', resolve);
-            stream.on('error', reject);
+      for await (const part of parts) {
+        const partAny = part as any;
+        if (partAny.fieldname === 'cv') {
+          console.log('cv part shape:', {
+            type: partAny.type,
+            filename: partAny.filename,
+            mimetype: partAny.mimetype,
+            typeofFile: typeof partAny.file,
+            typeofToBuffer: typeof partAny.toBuffer,
           });
-        } else {
-          app.logger.error({ streamKeys: Object.keys(stream).slice(0, 10) }, 'Stream type not recognized');
-          return reply.status(400).send({ error: 'Failed to read CV file' });
-        }
-
-        const buffer = Buffer.concat(chunks);
-        if (buffer.length === 0) {
-          app.logger.warn('CV file is empty');
-          return reply.status(400).send({ error: 'CV file is empty' });
-        }
-
-        // Extract metadata
-        cvFilename = (cvFile as any).filename || 'cv_file';
-        app.logger.debug({ filename: cvFilename, bufferSize: buffer.length }, 'CV file buffer read');
-
-        // Extract text from file
-        try {
-          // Try extractTextFromFile first for proper PDF/DOCX handling
-          cvText = await extractTextFromFile(buffer, cvFilename);
-          app.logger.debug({ textLength: cvText.length }, 'CV text extracted using extractTextFromFile');
-        } catch (extractError) {
-          // Fallback: treat as plain text if extraction fails
-          app.logger.debug({ err: extractError }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
           try {
-            cvText = buffer.toString('utf-8');
-            if (!cvText || cvText.trim().length === 0) {
-              throw new Error('Buffer conversion produced empty text');
+            if (partAny.file) {
+              // file part — stream the chunks
+              const chunks = [];
+              for await (const chunk of partAny.file) {
+                chunks.push(chunk);
+              }
+              fileBuffer = Buffer.concat(chunks);
+              filename = partAny.filename || 'upload';
+              mimetype = partAny.mimetype || 'application/octet-stream';
+            } else if (typeof partAny.toBuffer === 'function') {
+              fileBuffer = await partAny.toBuffer();
+              filename = partAny.filename || 'upload';
+              mimetype = partAny.mimetype || 'application/octet-stream';
+            } else {
+              // field part fallback
+              const val = partAny.value;
+              if (Buffer.isBuffer(val)) {
+                fileBuffer = val;
+              } else if (typeof val === 'string') {
+                fileBuffer = Buffer.from(val, 'binary');
+              }
             }
-            app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
-          } catch (fallbackError) {
-            app.logger.warn({ err: fallbackError }, 'UTF-8 fallback also failed');
-            throw new Error('Unable to extract text from CV file: ' + (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
+          } catch (e) {
+            console.error('Error reading cv part:', e);
           }
+          break;
         }
-      } catch (readError) {
-        app.logger.error({ err: readError }, 'Failed to read or extract CV file content');
-        return reply.status(400).send({ error: 'Failed to read CV file' });
+      }
+
+      if (!fileBuffer || fileBuffer.length === 0) {
+        app.logger.warn('File buffer is null or empty');
+        return reply.status(400).send({ error: 'No CV file uploaded' });
+      }
+
+      app.logger.debug({ fileBufferLength: fileBuffer.length, filename }, 'File buffer ready for text extraction');
+
+      // Extract text from file
+      let cvText = '';
+      try {
+        app.logger.debug({ filename, fileBufferLength: fileBuffer.length }, 'Attempting extractTextFromFile');
+        cvText = await extractTextFromFile(fileBuffer, filename);
+        app.logger.debug({ textLength: cvText?.length || 0 }, 'extractTextFromFile completed');
+
+        if (!cvText || cvText.trim().length === 0) {
+          app.logger.warn({ filename }, 'extractTextFromFile returned empty text, trying UTF-8 fallback');
+          cvText = fileBuffer.toString('utf-8');
+          if (!cvText || cvText.trim().length === 0) {
+            app.logger.warn('UTF-8 fallback also produced empty text');
+            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
+          }
+          app.logger.debug({ textLength: cvText.length }, 'UTF-8 fallback succeeded');
+        } else {
+          app.logger.debug({ textLength: cvText.length }, 'CV text extracted successfully');
+        }
+      } catch (extractError) {
+        // Fallback: treat as plain text if extraction fails
+        const extractMsg = extractError instanceof Error ? extractError.message : String(extractError);
+        app.logger.debug({ err: extractError, filename, message: extractMsg }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
+        try {
+          cvText = fileBuffer.toString('utf-8');
+          if (!cvText || cvText.trim().length === 0) {
+            app.logger.warn('UTF-8 conversion produced empty text');
+            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
+          }
+          app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
+        } catch (utf8Error) {
+          const utf8Msg = utf8Error instanceof Error ? utf8Error.message : String(utf8Error);
+          app.logger.error({ err: utf8Error, message: utf8Msg }, 'UTF-8 conversion also failed');
+          throw new Error(`Failed to extract text from file: ${utf8Msg}`);
+        }
       }
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
+      const cvFilename = filename;
 
       // Use OpenAI to extract structured CV data
       const parseSchema = z.object({
@@ -872,11 +884,22 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       });
 
       app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV parsing');
-      const { object: parsedData } = await generateObject({
-        model: gateway('openai/gpt-4o'),
-        schema: parseSchema,
-        prompt: `Extract structured CV information from this CV text:\n\n${cvText}`,
-      });
+      let parsedData;
+      try {
+        const result = await generateObject({
+          model: gateway('openai/gpt-4o'),
+          schema: parseSchema,
+          prompt: `Extract structured CV information from this CV text:\n\n${cvText}`,
+        });
+        if (!result || !result.object) {
+          throw new Error('generateObject returned invalid result: no object property');
+        }
+        parsedData = result.object;
+        app.logger.debug({ name: parsedData.name }, 'generateObject returned successfully');
+      } catch (genError) {
+        app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV parsing');
+        throw new Error(`AI generation failed: ${genError instanceof Error ? genError.message : String(genError)}`);
+      }
 
       app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
 
@@ -929,14 +952,15 @@ Return ONLY a JSON array of match objects, no other text. Example format:
           userId: session.user.id,
           ...parsedData,
           cvText,
-          cvFilename: cvFile.filename,
+          cvFilename: cvFilename,
         };
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
+      const details = errorMsg || 'Unknown error occurred';
       app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to parse CV');
-      return reply.status(500).send({ error: 'Failed to parse CV', details: errorMsg });
+      return reply.status(500).send({ error: 'Failed to parse CV', details });
     }
   });
 
