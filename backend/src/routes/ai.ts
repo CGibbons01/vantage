@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createRequire } from 'module';
 import { eq } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
-import { generateText, Output } from 'ai';
+import { generateText, generateObject } from 'ai';
 import { z } from 'zod';
 import mammoth from 'mammoth';
 import * as schema from '../db/schema/schema.js';
@@ -429,18 +429,14 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   }
 ]`;
 
-      const { output } = await generateText({
+      const { object } = await generateObject({
         model: gateway('openai/gpt-4o'),
-        output: Output.object({
-          schema: jobMatchResponseSchema,
-          name: 'JobMatches',
-          description: 'CV match analysis against multiple jobs',
-        }),
+        schema: jobMatchResponseSchema,
         prompt,
       });
 
-      app.logger.info({ userId: session.user.id, jobCount: output.matches.length }, 'Job matches analyzed successfully');
-      return output;
+      app.logger.info({ userId: session.user.id, jobCount: object.matches.length }, 'Job matches analyzed successfully');
+      return object;
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to analyze job matches');
       return reply.status(500).send({ error: 'Failed to analyze job matches' });
@@ -486,11 +482,13 @@ Return ONLY a JSON array of match objects, no other text. Example format:
           receivedFieldnames.push(part.fieldname);
           app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Received multipart part');
 
-          // Accept first file part regardless of field name
-          if (part.type === 'file' && !cvFile) {
+          // Find the "cv" part by field name, regardless of type classification
+          if (part.fieldname === 'cv' && !cvFile) {
+            app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Found cv part');
             cvFile = part;
-          } else if (part.type === 'field' && part.fieldname === 'job_description') {
+          } else if (part.fieldname === 'job_description' && part.type === 'field') {
             jobDescription = part.value as string;
+            app.logger.debug('Job description read successfully');
           }
         }
       } catch (partsError) {
@@ -500,14 +498,48 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
       if (!cvFile) {
         const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : '(none)';
-        app.logger.warn({ receivedFields: fieldList }, 'No file found in multipart form');
+        app.logger.warn({ receivedFields: fieldList }, 'No cv field found in multipart form');
         return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
       }
 
       // Read file as UTF-8 string
-      app.logger.debug({ fileName: cvFile.filename }, 'Reading file buffer');
-      const buffer = await cvFile.toBuffer();
-      const cvText = buffer.toString('utf-8');
+      let cvText = '';
+      let cvFilename = 'cv_file';
+      try {
+        app.logger.debug({ fieldname: cvFile.fieldname }, 'Reading CV file');
+
+        // Read file content using stream methods
+        const chunks: Buffer[] = [];
+
+        // Handle the stream by consuming it
+        const stream = cvFile as any;
+        if (typeof stream[Symbol.asyncIterator] === 'function') {
+          // Async iterable stream
+          for await (const chunk of stream) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+        } else if (typeof stream.on === 'function') {
+          // Node.js stream with events
+          await new Promise((resolve, reject) => {
+            stream.on('data', (chunk: any) => {
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            });
+            stream.on('end', resolve);
+            stream.on('error', reject);
+          });
+        } else {
+          app.logger.error({ streamKeys: Object.keys(stream).slice(0, 10) }, 'Stream type not recognized');
+          return reply.status(400).send({ error: 'Failed to read CV file - unknown stream type' });
+        }
+
+        const buffer = Buffer.concat(chunks);
+        cvText = buffer.toString('utf-8');
+        cvFilename = (cvFile as any).filename || 'cv_file';
+        app.logger.debug({ bufferSize: buffer.length, filename: cvFilename }, 'CV file read successfully');
+      } catch (readError) {
+        app.logger.error({ err: readError }, 'Failed to read CV file content');
+        return reply.status(400).send({ error: 'Failed to read CV file' });
+      }
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
 
@@ -520,19 +552,15 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         overall_score: z.number().int().min(0).max(100),
         industry_fit: z.string(),
         industry_scores: z.record(z.string(), z.number().int().min(0).max(100)),
-        strengths: z.array(z.string()).min(3).max(5),
-        improvements: z.array(z.string()).min(3).max(5),
+        strengths: z.array(z.string()),
+        improvements: z.array(z.string()),
         summary: z.string(),
       });
 
-      app.logger.debug({ userId: session.user.id }, 'Calling generateText for CV scoring');
-      const { output: scoreData } = await generateText({
+      app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV scoring');
+      const { object: scoreData } = await generateObject({
         model: gateway('openai/gpt-4o'),
-        output: Output.object({
-          schema: scoreSchema,
-          name: 'CVScore',
-          description: 'CV scoring and analysis',
-        }),
+        schema: scoreSchema,
         prompt: scorePrompt,
       });
 
@@ -547,7 +575,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
             industryFit: scoreData.industry_fit,
             industryScores: JSON.stringify(scoreData.industry_scores),
             overallScore: scoreData.overall_score,
-            cvFilename: cvFile.filename,
+            cvFilename: cvFilename,
             cvText: cvText,
             updatedAt: new Date(),
           })
@@ -558,7 +586,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
               industryFit: scoreData.industry_fit,
               industryScores: JSON.stringify(scoreData.industry_scores),
               overallScore: scoreData.overall_score,
-              cvFilename: cvFile.filename,
+              cvFilename: cvFilename,
               cvText: cvText,
               updatedAt: new Date(),
             },
@@ -715,8 +743,9 @@ Return ONLY a JSON array of match objects, no other text. Example format:
           receivedFieldnames.push(part.fieldname);
           app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Received multipart part');
 
-          // Accept first file part regardless of field name
-          if (part.type === 'file' && !cvFile) {
+          // Find the "cv" part by field name, regardless of type classification
+          if (part.fieldname === 'cv' && !cvFile) {
+            app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Found cv part');
             cvFile = part;
           }
         }
@@ -727,14 +756,48 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
       if (!cvFile) {
         const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : '(none)';
-        app.logger.warn({ receivedFields: fieldList }, 'No file found in multipart form');
+        app.logger.warn({ receivedFields: fieldList }, 'No cv field found in multipart form');
         return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
       }
 
       // Read file as UTF-8 string
-      app.logger.debug({ fileName: cvFile.filename }, 'Reading file buffer');
-      const buffer = await cvFile.toBuffer();
-      const cvText = buffer.toString('utf-8');
+      let cvText = '';
+      let cvFilename = 'cv_file';
+      try {
+        app.logger.debug({ fieldname: cvFile.fieldname }, 'Reading CV file');
+
+        // Read file content using stream methods
+        const chunks: Buffer[] = [];
+
+        // Handle the stream by consuming it
+        const stream = cvFile as any;
+        if (typeof stream[Symbol.asyncIterator] === 'function') {
+          // Async iterable stream
+          for await (const chunk of stream) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+        } else if (typeof stream.on === 'function') {
+          // Node.js stream with events
+          await new Promise((resolve, reject) => {
+            stream.on('data', (chunk: any) => {
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            });
+            stream.on('end', resolve);
+            stream.on('error', reject);
+          });
+        } else {
+          app.logger.error({ streamKeys: Object.keys(stream).slice(0, 10) }, 'Stream type not recognized');
+          return reply.status(400).send({ error: 'Failed to read CV file - unknown stream type' });
+        }
+
+        const buffer = Buffer.concat(chunks);
+        cvText = buffer.toString('utf-8');
+        cvFilename = (cvFile as any).filename || 'cv_file';
+        app.logger.debug({ bufferSize: buffer.length, filename: cvFilename }, 'CV file read successfully');
+      } catch (readError) {
+        app.logger.error({ err: readError }, 'Failed to read CV file content');
+        return reply.status(400).send({ error: 'Failed to read CV file' });
+      }
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
 
@@ -760,14 +823,10 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         })).default([]),
       });
 
-      app.logger.debug({ userId: session.user.id }, 'Calling generateText for CV parsing');
-      const { output: parsedData } = await generateText({
+      app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV parsing');
+      const { object: parsedData } = await generateObject({
         model: gateway('openai/gpt-4o'),
-        output: Output.object({
-          schema: parseSchema,
-          name: 'CVParse',
-          description: 'Extract structured CV information',
-        }),
+        schema: parseSchema,
         prompt: `Extract structured CV information from this CV text:\n\n${cvText}`,
       });
 
@@ -786,7 +845,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
             experience: JSON.stringify(parsedData.experience || []),
             education: JSON.stringify(parsedData.education || []),
             cvText: cvText,
-            cvFilename: cvFile.filename,
+            cvFilename: cvFilename,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
@@ -800,7 +859,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
               experience: JSON.stringify(parsedData.experience || []),
               education: JSON.stringify(parsedData.education || []),
               cvText: cvText,
-              cvFilename: cvFile.filename,
+              cvFilename: cvFilename,
               updatedAt: new Date(),
             },
           })
@@ -933,18 +992,14 @@ Provide 3-5 recommended_pivot_roles and 4-6 upskill_recommendations. Be specific
         bridge_plan: z.string(),
       });
 
-      const { output } = await generateText({
+      const { object } = await generateObject({
         model: gateway('openai/gpt-4o'),
-        output: Output.object({
-          schema: longevitySchema,
-          name: 'CareerLongevity',
-          description: 'Career longevity and automation risk analysis',
-        }),
+        schema: longevitySchema,
         prompt,
       });
 
-      app.logger.info({ userId: session.user.id, longevityScore: output.longevity_score }, 'Career longevity analysis completed');
-      return output;
+      app.logger.info({ userId: session.user.id, longevityScore: object.longevity_score }, 'Career longevity analysis completed');
+      return object;
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to analyze career longevity');
       return reply.status(500).send({ error: 'Failed to analyze career longevity' });
