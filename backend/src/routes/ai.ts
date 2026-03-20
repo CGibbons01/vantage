@@ -449,8 +449,17 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   // POST /api/cv/score
   fastify.post('/api/cv/score', {
     schema: {
-      description: 'Upload a CV file, extract text, score it with AI, and return results',
+      description: 'Score a CV by accepting base64-encoded file content in JSON body',
       tags: ['ai', 'cv'],
+      body: {
+        type: 'object',
+        required: ['file_base64', 'file_name', 'mime_type'],
+        properties: {
+          file_base64: { type: 'string', description: 'Base64-encoded file content' },
+          file_name: { type: 'string', description: 'Original filename' },
+          mime_type: { type: 'string', description: 'MIME type of the file (application/pdf or application/vnd.openxmlformats-officedocument.wordprocessingml.document)' },
+        },
+      },
       response: {
         200: {
           type: 'object',
@@ -475,108 +484,59 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         500: { type: 'object', properties: { error: { type: 'string' }, details: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { file_base64: string; file_name: string; mime_type: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    app.logger.info({ userId: session.user.id }, 'CV score request received');
+    const { file_base64, file_name, mime_type } = request.body;
+
+    app.logger.info({ userId: session.user.id, fileName: file_name, mimeType: mime_type }, 'CV score request received');
 
     try {
-      // Read multipart form data and capture first file part
-      const parts = request.parts();
-      let fileBuffer: Buffer | null = null;
-      let filename = '';
-      let foundFile = false;
-
-      for await (const part of parts) {
-        const partAny = part as any;
-        const hasFilename = partAny.filename !== undefined && partAny.filename !== null;
-
-        // Accept first part that has a filename (indicates a file)
-        if (hasFilename && !foundFile) {
-          app.logger.debug({ fieldname: partAny.fieldname, filename: partAny.filename }, 'Capturing file part');
-          foundFile = true;
-
-          try {
-            // Consume the file stream into buffer immediately
-            const chunks: Buffer[] = [];
-
-            // Handle file as async iterable stream
-            if (partAny.file) {
-              // File property contains the stream
-              for await (const chunk of partAny.file) {
-                chunks.push(chunk as Buffer);
-              }
-            } else {
-              // Fallback: try to iterate the part directly
-              for await (const chunk of partAny) {
-                chunks.push(chunk as Buffer);
-              }
-            }
-
-            if (chunks.length > 0) {
-              fileBuffer = Buffer.concat(chunks);
-              filename = partAny.filename || 'cv';
-              app.logger.debug({ filename, bufferSize: fileBuffer.length }, 'File captured successfully');
-            }
-          } catch (readError) {
-            app.logger.warn({ err: readError, fieldname: partAny.fieldname }, 'Failed to read file stream');
-          }
-        } else if (!foundFile) {
-          // Drain non-file field parts to avoid hanging
-          try {
-            if (partAny.file) {
-              for await (const _ of partAny.file) {
-                // Consume the stream
-              }
-            }
-          } catch {
-            // Ignore drain errors for non-file parts
-          }
-        }
-
-        // Stop iterating once file is found
-        if (foundFile) {
-          // Drain remaining parts
-          for await (const remainingPart of parts) {
-            const remainingAny = remainingPart as any;
-            try {
-              if (remainingAny.file) {
-                for await (const _ of remainingAny.file) {
-                  // Consume the stream
-                }
-              }
-            } catch {
-              // Ignore drain errors
-            }
-          }
-          break;
-        }
+      // Validate required fields
+      if (!file_base64 || !file_name || !mime_type) {
+        app.logger.warn({ userId: session.user.id }, 'Missing required fields in request body');
+        return reply.status(400).send({ error: 'Missing required fields: file_base64, file_name, mime_type' });
       }
 
-      if (!fileBuffer) {
-        app.logger.warn({ userId: session.user.id }, 'No CV file uploaded');
-        return reply.status(400).send({ error: 'No CV file uploaded' });
+      // Decode base64 to buffer
+      let fileBuffer: Buffer;
+      try {
+        fileBuffer = Buffer.from(file_base64, 'base64');
+        app.logger.debug({ fileName: file_name, bufferSize: fileBuffer.length }, 'Decoded base64 to buffer');
+      } catch (decodeError) {
+        app.logger.warn({ err: decodeError, fileName: file_name }, 'Failed to decode base64');
+        return reply.status(400).send({ error: 'Invalid base64 encoding' });
       }
 
-      // Extract text from file based on extension
+      // Extract text from file based on mime_type
       let cvText = '';
       try {
-        if (filename.toLowerCase().endsWith('.pdf')) {
+        if (mime_type === 'application/pdf') {
           app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
-          const data = await pdfParse(fileBuffer);
-          cvText = data.text || '';
-        } else if (filename.toLowerCase().endsWith('.docx')) {
+          try {
+            const data = await pdfParse(fileBuffer);
+            cvText = data.text || '';
+          } catch (pdfError) {
+            app.logger.warn({ err: pdfError }, 'PDF parsing failed, falling back to UTF-8');
+            cvText = fileBuffer.toString('utf-8');
+          }
+        } else if (mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
           app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
-          const result = await mammoth.extractRawText({ buffer: fileBuffer });
-          cvText = result.value || '';
+          try {
+            const result = await mammoth.extractRawText({ buffer: fileBuffer });
+            cvText = result.value || '';
+          } catch (docxError) {
+            app.logger.warn({ err: docxError }, 'DOCX parsing failed, falling back to UTF-8');
+            cvText = fileBuffer.toString('utf-8');
+          }
         } else {
-          app.logger.debug({ userId: session.user.id }, 'Treating file as plain text');
-          cvText = fileBuffer.toString('utf-8');
+          app.logger.warn({ userId: session.user.id, mimeType: mime_type }, 'Unsupported file type');
+          return reply.status(400).send({ error: 'Unsupported file type' });
         }
       } catch (extractError) {
-        app.logger.warn({ err: extractError, filename }, 'Text extraction failed, falling back to UTF-8');
-        cvText = fileBuffer.toString('utf-8');
+        app.logger.error({ err: extractError, fileName: file_name, mimeType: mime_type }, 'Text extraction failed');
+        return reply.status(400).send({ error: 'Failed to extract text from file' });
       }
 
       if (!cvText || cvText.trim().length === 0) {
@@ -586,20 +546,26 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text extracted successfully');
 
+      // Truncate text to 8000 characters for AI scoring
+      const truncatedCvText = cvText.length > 8000 ? cvText.substring(0, 8000) : cvText;
+      if (cvText.length > 8000) {
+        app.logger.debug({ userId: session.user.id, originalLength: cvText.length, truncatedLength: truncatedCvText.length }, 'CV text truncated for AI scoring');
+      }
+
       // Save cv_text to profile
       try {
         await app.db.insert(schema.profiles)
           .values({
             userId: session.user.id,
             cvText: cvText,
-            cvFilename: filename,
+            cvFilename: file_name,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
             target: schema.profiles.userId,
             set: {
               cvText: cvText,
-              cvFilename: filename,
+              cvFilename: file_name,
               updatedAt: new Date(),
             },
           });
@@ -613,7 +579,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       const scorePrompt = `Analyse this CV and return: an overall_score (0-100) reflecting CV quality and strength, industry_scores as an array of 5-8 relevant industries with scores (0-100) based on how well the CV fits each industry, industry_fit as a short label for the best-fit role/industry, and improvement_tips as 3-5 specific actionable tips to strengthen the CV.
 
 CV:
-${cvText}`;
+${truncatedCvText}`;
 
       const scoreSchema = z.object({
         overall_score: z.number().min(0).max(100),
@@ -967,8 +933,19 @@ ${cvText}`;
         parsedData.education = Array.isArray(parsedData.education) ? parsedData.education : [];
         app.logger.debug({ name: parsedData.name }, 'generateObject returned successfully');
       } catch (genError) {
-        app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV parsing');
-        throw new Error(`AI generation failed: ${genError instanceof Error ? genError.message : String(genError)}`);
+        app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV parsing, using defaults');
+        // Return default values if AI parsing fails
+        parsedData = {
+          name: undefined,
+          email: undefined,
+          phone: undefined,
+          location: undefined,
+          headline: undefined,
+          summary: undefined,
+          skills: [],
+          experience: [],
+          education: [],
+        };
       }
 
       app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
