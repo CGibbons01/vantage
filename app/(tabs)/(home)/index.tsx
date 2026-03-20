@@ -5,10 +5,10 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
 import { Ionicons } from "@expo/vector-icons";
 import { BodyScrollView } from "@/components/BodyScrollView";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -156,8 +156,26 @@ export default function HomeScreen() {
       console.log('[Dashboard] CV file selected:', fileName, 'mime:', mimeType);
       setUploading(true);
 
-      // Read file as base64
-      const base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: 'base64' });
+      // Read file as base64 — use FileSystem on native, FileReader API on web
+      let base64: string;
+      if (Platform.OS === 'web') {
+        console.log('[Dashboard] Web platform — reading file via FileReader');
+        const blob = await fetch(file.uri).then((r) => r.blob());
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            // Strip "data:<mime>;base64," prefix
+            const raw = dataUrl.split(',')[1] ?? '';
+            resolve(raw);
+          };
+          reader.onerror = () => reject(new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const FileSystem = await import('expo-file-system/legacy');
+        base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+      }
       console.log('[Dashboard] File read as base64, length:', base64.length);
 
       const token = await getBearerToken();
