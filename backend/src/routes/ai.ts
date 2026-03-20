@@ -497,8 +497,8 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       try {
         const parts = request.parts();
         for await (const part of parts) {
-          // Accept the first file, regardless of field name
-          if (part.type === 'file' && !cvFile) {
+          // Look for the "cv" field specifically
+          if (part.type === 'file' && part.fieldname === 'cv' && !cvFile) {
             cvFile = part;
           } else if (part.type === 'field' && part.fieldname === 'jobDescription') {
             jobDescription = part.value as string;
@@ -788,19 +788,19 @@ Return ONLY valid JSON matching this schema:
     app.logger.info({ userId: session.user.id }, 'CV parse request received');
 
     try {
-      // Find the first file part in the multipart form, regardless of field name
+      // Find the "cv" field in the multipart form
       let fileData: any = null;
       const parts = request.parts();
       for await (const part of parts) {
-        if (part.type === 'file' && part.filename) {
+        if (part.type === 'file' && part.fieldname === 'cv') {
           fileData = part;
           break;
         }
       }
 
       if (!fileData) {
-        app.logger.warn({}, 'No file uploaded');
-        return reply.status(400).send({ error: 'No file uploaded' });
+        app.logger.warn({}, 'No CV file uploaded');
+        return reply.status(400).send({ error: 'No CV file uploaded' });
       }
 
       const filename = fileData.filename.toLowerCase();
