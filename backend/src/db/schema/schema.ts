@@ -18,6 +18,7 @@ export const profiles = pgTable('profiles', {
   cvFilename: text('cv_filename'),
   industryScores: text('industry_scores'),
   overallScore: real('overall_score'),
+  improvementTips: text('improvement_tips'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
