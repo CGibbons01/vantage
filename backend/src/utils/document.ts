@@ -90,30 +90,56 @@ export async function extractTextFromFile(buffer: Buffer, mimeType: string): Pro
     if (mimeTypeLower === 'application/pdf') {
       // Use pdf-parse via createRequire (CommonJS pattern)
       const require = createRequire(import.meta.url);
-      const pdfParseModule = require('pdf-parse');
+      let pdfParseModule = require('pdf-parse');
 
       // Try to extract text from PDF
       let pdfData: any;
 
       try {
+        // Find the actual pdf-parse function by trying various approaches
+        let pdfParseFunc: any = null;
+
         // Try direct call
         if (typeof pdfParseModule === 'function') {
-          pdfData = await pdfParseModule(buffer);
-        } else if (pdfParseModule.default && typeof pdfParseModule.default === 'function') {
-          // Try .default export
-          pdfData = await pdfParseModule.default(buffer);
-        } else if (typeof pdfParseModule === 'object') {
-          // Last resort: try to find a callable property
-          const callableKey = Object.keys(pdfParseModule).find(
-            key => typeof pdfParseModule[key] === 'function'
-          );
-          if (callableKey) {
-            pdfData = await pdfParseModule[callableKey](buffer);
-          } else {
-            throw new Error('pdf-parse module has no callable function or default export');
+          pdfParseFunc = pdfParseModule;
+        }
+        // Try .default property
+        else if (pdfParseModule.default && typeof pdfParseModule.default === 'function') {
+          pdfParseFunc = pdfParseModule.default;
+        }
+        // Try common property names
+        else {
+          const commonNames = ['parse', 'pdf', 'PDFParser', 'Parser', 'default'];
+          for (const name of commonNames) {
+            if (pdfParseModule[name] && typeof pdfParseModule[name] === 'function') {
+              pdfParseFunc = pdfParseModule[name];
+              break;
+            }
           }
+        }
+
+        // If we found a function, call it
+        if (pdfParseFunc) {
+          pdfData = await pdfParseFunc(buffer);
         } else {
-          throw new Error('pdf-parse module is not callable');
+          // Last resort: try any callable property
+          const keys = Object.keys(pdfParseModule);
+          let found = false;
+          for (const key of keys) {
+            if (typeof pdfParseModule[key] === 'function') {
+              try {
+                pdfData = await pdfParseModule[key](buffer);
+                found = true;
+                break;
+              } catch {
+                // Try next function
+              }
+            }
+          }
+
+          if (!found) {
+            throw new Error('pdf-parse module has no callable function');
+          }
         }
       } catch (pdferror) {
         // If pdf-parse fails, return error with details

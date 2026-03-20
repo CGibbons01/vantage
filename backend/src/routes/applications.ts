@@ -315,6 +315,12 @@ export function registerApplicationRoutes(app: App, fastify: FastifyInstance) {
     const { id } = request.params;
     const { status } = request.body;
 
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return reply.status(400).send({ error: 'Invalid UUID format' });
+    }
+
     // Validate status is provided
     if (!status) {
       return reply.status(400).send({ error: 'status is required' });
