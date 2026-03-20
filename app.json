@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Vantage ai recruitment",
+    "slug": "vantage-ai-recruitment",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/app-icon-lca.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/app-icon-lca.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.placeholder.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "production",
+        "com.apple.security.application-groups": [
+          "group.com.placeholder.app.onesignal"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/app-icon-lca.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.placeholder.app"
+    },
+    "web": {
+      "favicon": "./assets/images/final_quest_240x240.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production"
+        }
+      ],
+      "expo-font",
+      "expo-router",
+      "expo-web-browser",
+      "expo-secure-store"
+    ],
+    "scheme": "vantageairecruitment",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "backendUrl": "https://gwud9jhy8v3d2k6g3hegh7fncuhskkcs.app.specular.dev",
+      "revenueCatApiKeyIos": "appl_RZUixsPyxzqSXhLNiJiPfvbAHbV",
+      "revenueCatApiKeyAndroid": "goog_XmUPULdxiZiiPIiYHyVtlcBSHFc",
+      "revenueCatEntitlementId": "pro",
+      "nativelyProjectId": "24750422-3c7f-41af-8b70-5237cf4860c6",
+      "revenueCatTestApiKeyIos": "test_XxUpjSNYbrnurJJWiJtSvRVyBKc",
+      "revenueCatTestApiKeyAndroid": "test_XxUpjSNYbrnurJJWiJtSvRVyBKc",
+      "oneSignalAppId": "ceea2f35-aec0-492a-90ae-a9999a5be14b"
+    }
+  }
+}

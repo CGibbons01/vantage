@@ -1,0 +1,679 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Mail, Copy, CheckCircle, Download, ChevronDown, ChevronUp, Lightbulb, RotateCcw } from 'lucide-react-native';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { authenticatedPost, getBearerToken, BACKEND_URL } from '@/utils/api';
+import { COLORS } from '@/constants/theme';
+import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { PremiumLock } from '@/components/PremiumLock';
+
+type Tone = 'professional' | 'enthusiastic' | 'concise';
+
+interface CoverLetterResult {
+  cover_letter: string;
+  word_count: number;
+}
+
+const TONES: { label: string; value: Tone; description: string }[] = [
+  { label: 'Professional', value: 'professional', description: 'Formal & polished' },
+  { label: 'Enthusiastic', value: 'enthusiastic', description: 'Energetic & passionate' },
+  { label: 'Concise', value: 'concise', description: 'Brief & to the point' },
+];
+
+const TIPS = [
+  'Tailor your cover letter to each specific job — mention the company by name.',
+  'Lead with your strongest achievement, not "I am applying for...".',
+  'Keep it to one page (250–400 words is ideal).',
+  'Mirror keywords from the job description to pass ATS filters.',
+  'End with a clear call to action — ask for an interview.',
+];
+
+const STEPS = ['Job Details', 'Your Info', 'Generate'];
+
+function StepIndicator({ currentStep }: { currentStep: number }) {
+  return (
+    <View style={styles.stepRow}>
+      {STEPS.map((label, i) => {
+        const stepNum = i + 1;
+        const isActive = stepNum === currentStep;
+        const isDone = stepNum < currentStep;
+        const stepStyle = isDone ? styles.stepCircleDone : isActive ? styles.stepCircleActive : styles.stepCircle;
+        const textStyle = isDone || isActive ? styles.stepNumActive : styles.stepNum;
+        const labelStyle = isActive ? styles.stepLabelActive : styles.stepLabel;
+        return (
+          <React.Fragment key={label}>
+            <View style={styles.stepItem}>
+              <View style={stepStyle}>
+                {isDone ? (
+                  <CheckCircle size={14} color="#000" />
+                ) : (
+                  <Text style={textStyle}>{stepNum}</Text>
+                )}
+              </View>
+              <Text style={labelStyle}>{label}</Text>
+            </View>
+            {i < STEPS.length - 1 && (
+              <View style={[styles.stepConnector, isDone && styles.stepConnectorDone]} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+export default function CoverLetterScreen() {
+  const insets = useSafeAreaInsets();
+  const { isSubscribed } = useSubscription();
+
+  const [applicantName, setApplicantName] = useState('');
+  const [jobTitle, setJobTitle] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [jobDescription, setJobDescription] = useState('');
+  const [cvSummary, setCvSummary] = useState('');
+  const [tone, setTone] = useState<Tone>('professional');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<CoverLetterResult | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [tipsExpanded, setTipsExpanded] = useState(false);
+
+  if (!isSubscribed) {
+    return (
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        <PremiumLock
+          featureName="AI Cover Letter Writer"
+          description="Generate tailored, compelling cover letters for any role in seconds with AI-powered personalisation."
+        />
+      </View>
+    );
+  }
+
+  const hasJobDetails = jobTitle.trim().length > 0 && companyName.trim().length > 0;
+  const hasUserInfo = applicantName.trim().length > 0;
+  const currentStep = result ? 3 : hasJobDetails && hasUserInfo ? 3 : hasJobDetails ? 2 : 1;
+
+  const handleGenerate = async () => {
+    if (!applicantName.trim() || !jobTitle.trim() || !companyName.trim() || !jobDescription.trim()) {
+      Alert.alert('Missing fields', 'Please fill in your name, job title, company, and job description.');
+      return;
+    }
+    console.log('[CoverLetter] Generate pressed - role:', jobTitle, 'company:', companyName, 'tone:', tone);
+    setLoading(true);
+    setResult(null);
+    try {
+      const data = await authenticatedPost<CoverLetterResult>('/api/cover-letter/generate', {
+        applicant_name: applicantName.trim(),
+        job_title: jobTitle.trim(),
+        company_name: companyName.trim(),
+        job_description: jobDescription.trim(),
+        cv_summary: cvSummary.trim(),
+        tone,
+      });
+      console.log('[CoverLetter] Generated successfully, word count:', data.word_count);
+      setResult(data);
+    } catch (e: any) {
+      console.error('[CoverLetter] Generate error:', e);
+      Alert.alert('Generation failed', e?.message || 'Could not generate your cover letter. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStartOver = () => {
+    console.log('[CoverLetter] Start Over pressed');
+    setResult(null);
+    setJobTitle('');
+    setCompanyName('');
+    setJobDescription('');
+    setApplicantName('');
+    setCvSummary('');
+    setTone('professional');
+    setCopied(false);
+  };
+
+  const handleCopy = () => {
+    if (!result) return;
+    console.log('[CoverLetter] Copy to clipboard pressed');
+    Clipboard.setStringAsync(result.cover_letter);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!result?.cover_letter) return;
+    console.log('[CoverLetter] Download PDF pressed');
+    setDownloading(true);
+    try {
+      const token = await getBearerToken();
+      if (!token) throw new Error('Not signed in');
+
+      const url = `${BACKEND_URL}/api/cover-letter/export-pdf`;
+      console.log('[CoverLetter] POST', url);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: result.cover_letter, title: 'Cover Letter' }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[CoverLetter] PDF export error:', response.status, text.slice(0, 200));
+        throw new Error(`Server error ${response.status}`);
+      }
+
+      console.log('[CoverLetter] PDF response received, processing...');
+
+      if (Platform.OS === 'web') {
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = 'cover-letter.pdf';
+        a.click();
+        URL.revokeObjectURL(blobUrl);
+        console.log('[CoverLetter] PDF download triggered on web');
+      } else {
+        const { default: FS, EncodingType } = await import('expo-file-system');
+        const Sharing = await import('expo-sharing');
+        const arrayBuffer = await response.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        const fileUri = FS.documentDirectory + 'cover-letter.pdf';
+        await FS.writeAsStringAsync(fileUri, base64, {
+          encoding: EncodingType.Base64,
+        });
+        console.log('[CoverLetter] PDF written to:', fileUri);
+        const canShare = await Sharing.default.isAvailableAsync();
+        if (canShare) {
+          await Sharing.default.shareAsync(fileUri, { mimeType: 'application/pdf' });
+          console.log('[CoverLetter] Share sheet opened');
+        } else {
+          Alert.alert('Saved', `PDF saved to: ${fileUri}`);
+        }
+      }
+    } catch (e: any) {
+      console.error('[CoverLetter] PDF download error:', e);
+      Alert.alert('Download Failed', e?.message || 'Could not generate PDF.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const wordCount = result ? Number(result.word_count) : 0;
+  const tipsLabel = tipsExpanded ? 'Hide Tips' : 'Writing Tips';
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerIconCircle}>
+          <Mail size={20} color={COLORS.accent} />
+        </View>
+        <Text style={styles.headerTitle}>Cover Letter</Text>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Step Indicator */}
+        <StepIndicator currentStep={currentStep} />
+
+        {/* Tips collapsible */}
+        <AnimatedPressable
+          style={styles.tipsToggle}
+          onPress={() => {
+            console.log('[CoverLetter] Tips toggled, expanded:', !tipsExpanded);
+            setTipsExpanded(v => !v);
+          }}
+        >
+          <View style={styles.tipsToggleLeft}>
+            <Lightbulb size={15} color={COLORS.accent} />
+            <Text style={styles.tipsToggleText}>{tipsLabel}</Text>
+          </View>
+          {tipsExpanded
+            ? <ChevronUp size={16} color={COLORS.textSecondary} />
+            : <ChevronDown size={16} color={COLORS.textSecondary} />
+          }
+        </AnimatedPressable>
+        {tipsExpanded && (
+          <View style={styles.tipsCard}>
+            {TIPS.map((tip, i) => (
+              <View key={i} style={styles.tipRow}>
+                <View style={styles.tipDot} />
+                <Text style={styles.tipText}>{tip}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Section 1: Job Details */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionNumCircle}>
+            <Text style={styles.sectionNum}>1</Text>
+          </View>
+          <Text style={styles.sectionTitle}>Job Details</Text>
+        </View>
+
+        <Text style={styles.fieldLabel}>Job Title</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Senior Product Manager"
+          placeholderTextColor={COLORS.textMuted}
+          value={jobTitle}
+          onChangeText={setJobTitle}
+        />
+
+        <Text style={styles.fieldLabel}>Company Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Acme Corp"
+          placeholderTextColor={COLORS.textMuted}
+          value={companyName}
+          onChangeText={setCompanyName}
+        />
+
+        <Text style={styles.fieldLabel}>Job Description</Text>
+        <TextInput
+          style={[styles.input, styles.textareaLarge]}
+          placeholder="Paste the job ad here — the more detail, the better your letter will be..."
+          placeholderTextColor={COLORS.textMuted}
+          value={jobDescription}
+          onChangeText={setJobDescription}
+          multiline
+          numberOfLines={6}
+          textAlignVertical="top"
+        />
+
+        {/* Section 2: Your Info */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionNumCircle}>
+            <Text style={styles.sectionNum}>2</Text>
+          </View>
+          <Text style={styles.sectionTitle}>Your Info</Text>
+        </View>
+
+        <Text style={styles.fieldLabel}>Your Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Jane Smith"
+          placeholderTextColor={COLORS.textMuted}
+          value={applicantName}
+          onChangeText={setApplicantName}
+          autoCapitalize="words"
+        />
+
+        <Text style={styles.fieldLabel}>CV Summary</Text>
+        <TextInput
+          style={[styles.input, styles.textarea]}
+          placeholder="e.g. 5 years in product management at SaaS companies, led teams of 8, shipped 3 major product launches..."
+          placeholderTextColor={COLORS.textMuted}
+          value={cvSummary}
+          onChangeText={setCvSummary}
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+        />
+
+        {/* Section 3: Generate */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionNumCircle}>
+            <Text style={styles.sectionNum}>3</Text>
+          </View>
+          <Text style={styles.sectionTitle}>Tone & Generate</Text>
+        </View>
+
+        <Text style={styles.fieldLabel}>Tone</Text>
+        <View style={styles.toneRow}>
+          {TONES.map(t => {
+            const isActive = tone === t.value;
+            return (
+              <AnimatedPressable
+                key={t.value}
+                style={[styles.toneBtn, isActive && styles.toneBtnActive]}
+                onPress={() => { console.log('[CoverLetter] Tone selected:', t.value); setTone(t.value); }}
+              >
+                <Text style={[styles.toneBtnLabel, isActive && styles.toneBtnLabelActive]}>{t.label}</Text>
+                <Text style={[styles.toneBtnDesc, isActive && styles.toneBtnDescActive]}>{t.description}</Text>
+              </AnimatedPressable>
+            );
+          })}
+        </View>
+
+        <AnimatedPressable
+          style={[styles.primaryBtn, loading && styles.primaryBtnDisabled]}
+          onPress={handleGenerate}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#000" size="small" />
+          ) : (
+            <>
+              <Mail size={18} color="#000" />
+              <Text style={styles.primaryBtnText}>Generate Cover Letter</Text>
+            </>
+          )}
+        </AnimatedPressable>
+
+        {result && (
+          <View style={styles.resultCard}>
+            {/* Result header */}
+            <View style={styles.resultBanner}>
+              <CheckCircle size={20} color={COLORS.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resultBannerTitle}>Your Cover Letter is Ready!</Text>
+                <Text style={styles.resultBannerSub}>
+                  {wordCount}
+                  {' words'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.resultActions}>
+              <AnimatedPressable
+                style={[styles.actionBtn, downloading && styles.actionBtnDisabled]}
+                onPress={handleDownloadPdf}
+                disabled={downloading}
+              >
+                {downloading
+                  ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
+                  : <Download size={14} color={COLORS.accent} />
+                }
+                <Text style={styles.actionBtnText}>PDF</Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                style={[styles.actionBtn, copied && styles.actionBtnSuccess]}
+                onPress={handleCopy}
+              >
+                {copied
+                  ? <CheckCircle size={14} color={COLORS.success} />
+                  : <Copy size={14} color={COLORS.accent} />
+                }
+                <Text style={[styles.actionBtnText, copied && { color: COLORS.success }]}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </Text>
+              </AnimatedPressable>
+              <AnimatedPressable style={styles.startOverBtn} onPress={handleStartOver}>
+                <RotateCcw size={14} color={COLORS.textSecondary} />
+                <Text style={styles.startOverText}>Start Over</Text>
+              </AnimatedPressable>
+            </View>
+
+            <View style={styles.letterContent}>
+              <Text style={styles.letterText} selectable>{result.cover_letter}</Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  headerIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: COLORS.accentDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
+
+  // Step indicator
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 4,
+  },
+  stepItem: { alignItems: 'center', gap: 4 },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepCircleActive: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepCircleDone: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepNum: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted },
+  stepNumActive: { fontSize: 12, fontWeight: '700', color: '#000' },
+  stepLabel: { fontSize: 10, color: COLORS.textMuted, fontWeight: '500' },
+  stepLabelActive: { fontSize: 10, color: COLORS.accent, fontWeight: '700' },
+  stepConnector: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginBottom: 14,
+    marginHorizontal: 4,
+  },
+  stepConnectorDone: { backgroundColor: COLORS.accent },
+
+  // Tips
+  tipsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.accentDim,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.25)',
+  },
+  tipsToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tipsToggleText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
+  tipsCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 10,
+  },
+  tipRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  tipDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.accent,
+    marginTop: 7,
+    flexShrink: 0,
+  },
+  tipText: { flex: 1, fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
+
+  // Section headers
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+    marginTop: 8,
+  },
+  sectionNumCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.accentMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+  },
+  sectionNum: { fontSize: 12, fontWeight: '800', color: COLORS.accent },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+
+  // Form
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginBottom: 6,
+    marginTop: 4,
+    letterSpacing: 0.2,
+  },
+  input: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 14,
+  },
+  textarea: { height: 100, paddingTop: 13 },
+  textareaLarge: { height: 140, paddingTop: 13 },
+
+  // Tone
+  toneRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  toneBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    gap: 3,
+  },
+  toneBtnActive: { backgroundColor: COLORS.accentMuted, borderColor: 'rgba(245,158,11,0.4)' },
+  toneBtnLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
+  toneBtnLabelActive: { color: COLORS.accent },
+  toneBtnDesc: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
+  toneBtnDescActive: { color: COLORS.accent, opacity: 0.8 },
+
+  // Generate button
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: COLORS.accent,
+    borderRadius: 14,
+    height: 56,
+    marginBottom: 20,
+    boxShadow: '0 4px 20px rgba(245,158,11,0.4)',
+  },
+  primaryBtnDisabled: { opacity: 0.6 },
+  primaryBtnText: { fontSize: 17, fontWeight: '800', color: '#000' },
+
+  // Result
+  resultCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 16,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+  },
+  resultBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.successMuted,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.25)',
+  },
+  resultBannerTitle: { fontSize: 15, fontWeight: '700', color: COLORS.success },
+  resultBannerSub: { fontSize: 12, color: COLORS.success, opacity: 0.8, marginTop: 1 },
+  resultActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+    flexWrap: 'wrap',
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.accentDim,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.25)',
+  },
+  actionBtnDisabled: { opacity: 0.5 },
+  actionBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
+  actionBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.accent },
+  startOverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginLeft: 'auto',
+  },
+  startOverText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
+  letterContent: {
+    backgroundColor: COLORS.surfaceAlt,
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  letterText: { fontSize: 14, color: COLORS.text, lineHeight: 22 },
+});
