@@ -446,23 +446,30 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   // POST /api/cv/score
   fastify.post('/api/cv/score', {
     schema: {
-      description: 'Score a CV file and extract insights',
+      description: 'Score a CV and get improvement tips',
       tags: ['ai', 'cv'],
       response: {
         200: {
           type: 'object',
           properties: {
-            overall_score: { type: 'integer' },
+            overall_score: { type: 'number' },
+            industry_scores: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  industry: { type: 'string' },
+                  score: { type: 'number' },
+                },
+              },
+            },
             industry_fit: { type: 'string' },
-            industry_scores: { type: 'object' },
-            strengths: { type: 'array', items: { type: 'string' } },
-            improvements: { type: 'array', items: { type: 'string' } },
-            summary: { type: 'string' },
+            improvement_tips: { type: 'array', items: { type: 'string' } },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
-        500: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' }, details: { type: 'string' } } },
       },
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -472,157 +479,40 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     app.logger.info({ userId: session.user.id }, 'CV score request received');
 
     try {
-      let jobDescription: string | null = null;
+      // Read cv_text from profiles table
+      app.logger.debug({ userId: session.user.id }, 'Fetching CV text from profiles table');
+      const profileRows = await app.db
+        .select({ cvText: schema.profiles.cvText })
+        .from(schema.profiles)
+        .where(eq(schema.profiles.userId, session.user.id));
 
-      const parts = request.parts();
-      let fileBuffer: Buffer | null = null;
-      let filename = 'upload';
-      let mimetype = 'application/octet-stream';
-
-      for await (const part of parts) {
-        const partAny = part as any;
-        if (partAny.fieldname === 'cv') {
-          app.logger.debug({
-            type: partAny.type,
-            filename: partAny.filename,
-            hasFile: !!partAny.file,
-            hasToBuffer: typeof partAny.toBuffer,
-            hasValue: !!partAny.value,
-          }, 'Processing cv part');
-
-          try {
-            // Strategy 1: Try to iterate part directly as stream (Fastify multipart file format)
-            try {
-              const chunks: Buffer[] = [];
-              for await (const chunk of partAny) {
-                chunks.push(chunk);
-              }
-              if (chunks.length > 0) {
-                fileBuffer = Buffer.concat(chunks);
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from part stream');
-              }
-            } catch (streamError) {
-              app.logger.debug({ err: streamError }, 'Part stream iteration failed, trying alternatives');
-            }
-
-            // Strategy 2: Try .file property if part iteration didn't work
-            if (!fileBuffer && partAny.file) {
-              const chunks: Buffer[] = [];
-              for await (const chunk of partAny.file) {
-                chunks.push(chunk);
-              }
-              if (chunks.length > 0) {
-                fileBuffer = Buffer.concat(chunks);
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .file stream');
-              }
-            }
-
-            // Strategy 3: Try toBuffer() method
-            if (!fileBuffer && typeof partAny.toBuffer === 'function') {
-              try {
-                fileBuffer = await partAny.toBuffer();
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file using toBuffer');
-              } catch (toBufferError) {
-                app.logger.debug({ err: toBufferError }, 'toBuffer() failed');
-              }
-            }
-
-            // Strategy 4: Try to use .value as fallback (could be string or buffer)
-            if (!fileBuffer && partAny.value !== undefined) {
-              if (Buffer.isBuffer(partAny.value)) {
-                fileBuffer = partAny.value;
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .value (Buffer)');
-              } else if (typeof partAny.value === 'string' && partAny.value.length > 0) {
-                fileBuffer = Buffer.from(partAny.value, 'utf-8');
-                app.logger.debug({ bufferSize: fileBuffer.length, preview: partAny.value.substring(0, 50) }, 'Read file from .value (string)');
-              }
-            }
-
-            // Set filename and mimetype from part if available
-            if (partAny.filename) {
-              filename = partAny.filename;
-            }
-            if (partAny.mimetype) {
-              mimetype = partAny.mimetype;
-            }
-          } catch (e) {
-            app.logger.warn({ err: e }, 'Error reading cv part');
-          }
-          break;
-        } else if (partAny.fieldname === 'job_description') {
-          jobDescription = partAny.value as string;
-        }
+      if (!profileRows || profileRows.length === 0 || !profileRows[0].cvText) {
+        app.logger.warn({ userId: session.user.id }, 'No CV text found in profiles');
+        return reply.status(400).send({ error: 'No CV text found in user profile' });
       }
 
-      if (!fileBuffer || fileBuffer.length === 0) {
-        app.logger.warn('File buffer is null or empty');
-        return reply.status(400).send({ error: 'No CV file uploaded' });
-      }
-
-      app.logger.debug({ fileBufferLength: fileBuffer.length, filename }, 'File buffer ready for text extraction');
-
-      // Extract text from file
-      let cvText = '';
-      try {
-        app.logger.debug({ filename, fileBufferLength: fileBuffer.length }, 'Attempting extractTextFromFile');
-        cvText = await extractTextFromFile(fileBuffer, filename);
-        app.logger.debug({ textLength: cvText?.length || 0 }, 'extractTextFromFile completed');
-
-        if (!cvText || cvText.trim().length === 0) {
-          app.logger.warn({ filename }, 'extractTextFromFile returned empty text, trying UTF-8 fallback');
-          cvText = fileBuffer.toString('utf-8');
-          if (!cvText || cvText.trim().length === 0) {
-            app.logger.warn('UTF-8 fallback also produced empty text');
-            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
-          }
-          app.logger.debug({ textLength: cvText.length }, 'UTF-8 fallback succeeded');
-        } else {
-          app.logger.debug({ textLength: cvText.length }, 'CV text extracted successfully');
-        }
-      } catch (extractError) {
-        // Fallback: treat as plain text if extraction fails
-        const extractMsg = extractError instanceof Error ? extractError.message : String(extractError);
-        app.logger.debug({ err: extractError, filename, message: extractMsg }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
-        try {
-          cvText = fileBuffer.toString('utf-8');
-          if (!cvText || cvText.trim().length === 0) {
-            app.logger.warn('UTF-8 conversion produced empty text');
-            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
-          }
-          app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
-        } catch (utf8Error) {
-          const utf8Msg = utf8Error instanceof Error ? utf8Error.message : String(utf8Error);
-          app.logger.error({ err: utf8Error, message: utf8Msg }, 'UTF-8 conversion also failed');
-          throw new Error(`Failed to extract text from file: ${utf8Msg}`);
-        }
-      }
-
-      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
-      const cvFilename = filename;
+      const cvText = profileRows[0].cvText;
+      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text retrieved successfully');
 
       // Use OpenAI to score the CV
-      const scorePrompt = jobDescription
-        ? `Score this CV against the job description. Provide an overall score (0-100), industry fit assessment, scores for relevant industries, key strengths, areas for improvement, and a summary.\n\nCV:\n${cvText}\n\nJob Description:\n${jobDescription}`
-        : `Score this CV across multiple industries. Provide an overall score (0-100), best industry fit, scores for relevant industries, key strengths, areas for improvement, and a summary.\n\nCV:\n${cvText}`;
+      const scorePrompt = `You are an expert CV/resume analyst and career coach. Analyse the following CV text and return a structured evaluation.
+
+- overall_score: A number from 0–100 reflecting the overall quality and strength of the CV (consider clarity, structure, achievements, keywords, and completeness).
+- industry_scores: An array of 5–8 objects, each with an 'industry' (string) and 'score' (0–100) field. Score each industry based on how well this CV fits that industry. Choose industries that are most relevant to the CV content.
+- industry_fit: A short string (e.g. 'Software Engineering', 'Financial Analysis') describing the single best-fit industry or role type for this CV.
+- improvement_tips: An array of 3–5 specific, actionable tips to strengthen this CV for the candidate's target industries. Be concrete and practical.
+
+CV Text:
+${cvText}`;
 
       const scoreSchema = z.object({
-        overall_score: z.number().int().min(0).max(100),
+        overall_score: z.number().min(0).max(100),
+        industry_scores: z.array(z.object({
+          industry: z.string(),
+          score: z.number().min(0).max(100),
+        })),
         industry_fit: z.string(),
-        industry_scores: z.object({
-          technology: z.number().int().min(0).max(100),
-          finance: z.number().int().min(0).max(100),
-          healthcare: z.number().int().min(0).max(100),
-          marketing: z.number().int().min(0).max(100),
-          sales: z.number().int().min(0).max(100),
-          engineering: z.number().int().min(0).max(100),
-          education: z.number().int().min(0).max(100),
-          legal: z.number().int().min(0).max(100),
-          consulting: z.number().int().min(0).max(100),
-          other: z.number().int().min(0).max(100),
-        }).partial(),
-        strengths: z.array(z.string()),
-        improvements: z.array(z.string()),
-        summary: z.string(),
+        improvement_tips: z.array(z.string()),
       });
 
       app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV scoring');
@@ -650,39 +540,40 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         await app.db.insert(schema.profiles)
           .values({
             userId: session.user.id,
-            cvScore: scoreData.overall_score,
-            industryFit: scoreData.industry_fit,
-            industryScores: JSON.stringify(scoreData.industry_scores),
             overallScore: scoreData.overall_score,
-            cvFilename: cvFilename,
-            cvText: cvText,
+            industryScores: JSON.stringify(scoreData.industry_scores),
+            industryFit: scoreData.industry_fit,
+            improvementTips: JSON.stringify(scoreData.improvement_tips),
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
             target: schema.profiles.userId,
             set: {
-              cvScore: scoreData.overall_score,
-              industryFit: scoreData.industry_fit,
-              industryScores: JSON.stringify(scoreData.industry_scores),
               overallScore: scoreData.overall_score,
-              cvFilename: cvFilename,
-              cvText: cvText,
+              industryScores: JSON.stringify(scoreData.industry_scores),
+              industryFit: scoreData.industry_fit,
+              improvementTips: JSON.stringify(scoreData.improvement_tips),
               updatedAt: new Date(),
             },
           });
 
-        app.logger.info({ userId: session.user.id }, 'Profile updated with CV score');
+        app.logger.info({ userId: session.user.id }, 'Profile updated with CV score and improvement tips');
       } catch (dbError) {
         app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV score to profile, returning score anyway');
       }
 
-      return scoreData;
+      return {
+        overall_score: scoreData.overall_score,
+        industry_scores: scoreData.industry_scores,
+        industry_fit: scoreData.industry_fit,
+        improvement_tips: scoreData.improvement_tips,
+      };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
       const details = errorMsg || 'Unknown error occurred';
       app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to score CV');
-      return reply.status(500).send({ error: 'Failed to score CV', details });
+      return reply.status(500).send({ error: 'Scoring failed', details });
     }
   });
 
@@ -940,24 +831,15 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
       // Use OpenAI to extract structured CV data
       const parseSchema = z.object({
-        name: z.string().optional(),
-        email: z.string().optional(),
-        phone: z.string().optional(),
-        location: z.string().optional(),
-        headline: z.string().optional(),
-        summary: z.string().optional(),
-        skills: z.array(z.string()).default([]),
-        experience: z.array(z.object({
-          title: z.string(),
-          company: z.string(),
-          duration: z.string(),
-          description: z.string(),
-        })).default([]),
-        education: z.array(z.object({
-          degree: z.string(),
-          institution: z.string(),
-          year: z.string(),
-        })).default([]),
+        name: z.string().nullish(),
+        email: z.string().nullish(),
+        phone: z.string().nullish(),
+        location: z.string().nullish(),
+        headline: z.string().nullish(),
+        summary: z.string().nullish(),
+        skills: z.array(z.string()).nullish(),
+        experience: z.array(z.any()).nullish(),
+        education: z.array(z.any()).nullish(),
       });
 
       app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV parsing');
@@ -966,12 +848,16 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         const result = await generateObject({
           model: gateway('openai/gpt-4o'),
           schema: parseSchema,
-          prompt: `Extract structured CV information from this CV text:\n\n${cvText}`,
+          prompt: `Extract structured CV information from this CV text:\n\nCV Text:\n${cvText}\n\nFor any sections not found, return empty arrays or null. Return JSON with: name, email, phone, location, headline, summary (strings or null), skills, experience, education (arrays).`,
         });
         if (!result || !result.object) {
           throw new Error('generateObject returned invalid result: no object property');
         }
         parsedData = result.object;
+        // Ensure arrays have default values if null or undefined
+        parsedData.skills = parsedData.skills || [];
+        parsedData.experience = parsedData.experience || [];
+        parsedData.education = parsedData.education || [];
         app.logger.debug({ name: parsedData.name }, 'generateObject returned successfully');
       } catch (genError) {
         app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV parsing');
@@ -1016,9 +902,9 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         const profile = result[0];
         const parsedProfile = {
           ...profile,
-          skills: JSON.parse(profile.skills),
-          experience: JSON.parse(profile.experience),
-          education: JSON.parse(profile.education),
+          skills: profile.skills ? JSON.parse(profile.skills) : [],
+          experience: profile.experience ? JSON.parse(profile.experience) : [],
+          education: profile.education ? JSON.parse(profile.education) : [],
         };
 
         app.logger.info({ userId: session.user.id, profileId: profile.id }, 'Profile saved successfully');
@@ -1028,6 +914,9 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         return {
           userId: session.user.id,
           ...parsedData,
+          skills: parsedData.skills || [],
+          experience: parsedData.experience || [],
+          education: parsedData.education || [],
           cvText,
           cvFilename: cvFilename,
         };
