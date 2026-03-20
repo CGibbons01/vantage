@@ -494,23 +494,32 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       let cvText: string = '';
       let cvFilename: string = '';
 
+      const receivedFieldnames: string[] = [];
+
       try {
         const parts = request.parts();
+
         for await (const part of parts) {
-          // Look for the "cv" field specifically
-          if (part.type === 'file' && part.fieldname === 'cv' && !cvFile) {
+          receivedFieldnames.push(`${part.fieldname}(${part.type})`);
+
+          // Accept the first file part regardless of field name
+          if (part.type === 'file' && !cvFile) {
             cvFile = part;
           } else if (part.type === 'field' && part.fieldname === 'jobDescription') {
             jobDescription = part.value as string;
           }
         }
+
+        app.logger.info({ receivedParts: receivedFieldnames }, 'Multipart form parts received');
       } catch (partsError) {
         app.logger.error({ err: partsError, stack: (partsError as Error).stack }, 'Error parsing multipart form');
         return reply.status(400).send({ error: 'Invalid multipart form data' });
       }
 
       if (!cvFile) {
-        return reply.status(400).send({ error: 'No CV file uploaded' });
+        const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : 'none';
+        app.logger.warn({ receivedFields: fieldList }, 'No file part found in multipart form');
+        return reply.status(400).send({ error: `No CV file uploaded - received parts: ${fieldList}` });
       }
 
       cvFilename = cvFile.filename;
