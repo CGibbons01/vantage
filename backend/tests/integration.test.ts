@@ -416,24 +416,22 @@ describe("API Integration Tests", () => {
 
   // CV Scoring AI endpoint
   test("Score CV", async () => {
-    const form = new FormData();
-    form.append("cv", createTestFile("resume.pdf", "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js\nExperience: 5 years", "application/pdf"));
+    // CV was already uploaded in previous "Upload CV" test, so just score it
     const res = await authenticatedApi("/api/cv/score", authToken, {
       method: "POST",
-      body: form,
     });
     await expectStatus(res, 200);
     const data = await res.json();
     expect(data.overall_score).toBeDefined();
     expect(data.industry_fit).toBeDefined();
+    expect(data.improvement_tips).toBeDefined();
   });
 
   test("Score CV - missing required field", async () => {
-    const form = new FormData();
-    // Upload empty form without "cv" field
-    const res = await authenticatedApi("/api/cv/score", authToken, {
+    // Create a new user without uploading CV and try to score
+    const { token: newUserToken } = await signUpTestUser();
+    const res = await authenticatedApi("/api/cv/score", newUserToken, {
       method: "POST",
-      body: form,
     });
     await expectStatus(res, 400);
   });
