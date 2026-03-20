@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  ScrollView,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
@@ -37,8 +36,11 @@ interface Profile {
 }
 
 interface CvScoreResult {
+  overall_score?: number;
   score?: number;
   industry_fit?: string;
+  industry_scores?: { industry: string; score: number }[];
+  improvement_tips?: string[];
   section_scores?: SectionScore[];
   strengths?: string[];
   improvements?: string[];
@@ -54,26 +56,10 @@ const QUICK_ACTIONS = [
   { label: "Job Alerts", icon: "notifications-outline" as const, route: "/(tabs)/notifications" },
 ];
 
-const SECTION_NAMES = ["Summary", "Experience", "Skills", "Education", "Formatting"];
-
-function deriveSectionScores(overall: number): SectionScore[] {
-  const offsets = [4, -6, 8, -3, 2];
-  return SECTION_NAMES.map((name, i) => ({
-    name,
-    score: Math.min(100, Math.max(0, overall + offsets[i])),
-  }));
-}
-
 function getChipColor(score: number): string {
   if (score >= 75) return COLORS.scoreGreen;
   if (score >= 50) return COLORS.scoreAmber;
   return COLORS.scoreRed;
-}
-
-function getChipBg(score: number): string {
-  if (score >= 75) return COLORS.successMuted;
-  if (score >= 50) return COLORS.warningMuted;
-  return COLORS.errorMuted;
 }
 
 export default function HomeScreen() {
@@ -83,6 +69,8 @@ export default function HomeScreen() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [cvScore, setCvScore] = useState<number | null>(null);
   const [industryFit, setIndustryFit] = useState<string | null>(null);
+  const [industryScores, setIndustryScores] = useState<{ industry: string; score: number }[] | null>(null);
+  const [improvementTips, setImprovementTips] = useState<string[] | null>(null);
   const [uploadSectionScores, setUploadSectionScores] = useState<SectionScore[] | null>(null);
   const [uploadStrengths, setUploadStrengths] = useState<string[] | null>(null);
   const [uploadImprovements, setUploadImprovements] = useState<string[] | null>(null);
@@ -99,25 +87,14 @@ export default function HomeScreen() {
   const industryFitToShow = industryFit ?? profile?.industry_fit ?? null;
   const scoreColor = scoreToShow != null ? getScoreColor(scoreToShow) : COLORS.accent;
 
-  const rawSectionScores =
-    uploadSectionScores ??
-    profile?.section_scores ??
-    profile?.analysis?.section_scores ??
-    null;
-  const sectionScores: SectionScore[] | null =
-    scoreToShow != null
-      ? rawSectionScores && rawSectionScores.length > 0
-        ? rawSectionScores
-        : deriveSectionScores(scoreToShow)
-      : null;
-
   const strengths: string[] | null =
     uploadStrengths ??
     profile?.strengths ??
     profile?.analysis?.strengths ??
     null;
 
-  const improvements: string[] | null =
+  const tipsToShow: string[] | null =
+    improvementTips ??
     uploadImprovements ??
     profile?.improvements ??
     profile?.analysis?.improvements ??
@@ -155,11 +132,6 @@ export default function HomeScreen() {
       }
 
       const file = result.assets[0];
-      console.log("[Dashboard] File selected:", file.name, file.uri);
-
-      setUploading(true);
-
-      const token = await getBearerToken();
       const fileName = file.name ?? "cv.pdf";
       const lowerFileName = fileName.toLowerCase();
       const detectedMime = lowerFileName.endsWith(".docx")
@@ -167,6 +139,12 @@ export default function HomeScreen() {
         : lowerFileName.endsWith(".doc")
         ? "application/msword"
         : "application/pdf";
+
+      console.log("[Dashboard] CV file selected:", fileName, "mime:", detectedMime, "uri:", file.uri);
+
+      setUploading(true);
+
+      const token = await getBearerToken();
       const formData = new FormData();
       formData.append("cv", {
         uri: file.uri,
@@ -191,9 +169,10 @@ export default function HomeScreen() {
       const data: CvScoreResult = await response.json();
       console.log("[Dashboard] CV score result:", data);
 
-      const score = data.score != null ? Number(data.score) : null;
-      setCvScore(score);
+      setCvScore(data.overall_score ?? data.score ?? null);
       setIndustryFit(data.industry_fit ?? null);
+      setIndustryScores(data.industry_scores ?? null);
+      setImprovementTips(data.improvement_tips ?? null);
       setUploadSectionScores(data.section_scores ?? null);
       setUploadStrengths(data.strengths ?? null);
       setUploadImprovements(data.improvements ?? null);
@@ -209,6 +188,8 @@ export default function HomeScreen() {
     console.log("[Dashboard] Re-upload CV pressed");
     setCvScore(null);
     setIndustryFit(null);
+    setIndustryScores(null);
+    setImprovementTips(null);
     setUploadSectionScores(null);
     setUploadStrengths(null);
     setUploadImprovements(null);
@@ -288,32 +269,29 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Section Score Chips */}
-        {hasInsights && sectionScores != null && (
+        {/* Industry Fit Bars */}
+        {hasInsights && industryScores != null && industryScores.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Section Scores</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsRow}
-              style={styles.chipsScroll}
-            >
-              {sectionScores.map((item) => {
-                const chipColor = getChipColor(item.score);
-                const chipBg = getChipBg(item.score);
+            <Text style={styles.sectionTitle}>Industry Fit</Text>
+            <View style={styles.industryCard}>
+              {industryScores.map((item) => {
+                const barColor = getChipColor(item.score);
+                const barWidth = `${item.score}%` as any;
                 return (
-                  <View key={item.name} style={[styles.chip, { backgroundColor: chipBg }]}>
-                    <View style={[styles.chipDot, { backgroundColor: chipColor }]} />
-                    <Text style={styles.chipName}>{item.name}</Text>
-                    <Text style={[styles.chipScore, { color: chipColor }]}>{item.score}</Text>
+                  <View key={item.industry} style={styles.industryRow}>
+                    <Text style={styles.industryName}>{item.industry}</Text>
+                    <View style={styles.barBackground}>
+                      <View style={[styles.barFill, { width: barWidth, backgroundColor: barColor }]} />
+                    </View>
+                    <Text style={[styles.industryScore, { color: barColor }]}>{item.score}</Text>
                   </View>
                 );
               })}
-            </ScrollView>
+            </View>
           </>
         )}
 
-        {/* Strengths & Improvements */}
+        {/* Strengths & Improvement Tips */}
         {hasInsights && (
           <View style={styles.insightsRow}>
             {/* Strengths */}
@@ -337,15 +315,15 @@ export default function HomeScreen() {
               )}
             </View>
 
-            {/* Improvements */}
+            {/* Improvement Tips */}
             <View style={[styles.insightCard, styles.improvementsCard]}>
               <View style={styles.insightHeader}>
                 <Ionicons name="bulb-outline" size={18} color={COLORS.scoreAmber} />
-                <Text style={[styles.insightTitle, { color: COLORS.scoreAmber }]}>To Improve</Text>
+                <Text style={[styles.insightTitle, { color: COLORS.scoreAmber }]}>Improvement Tips</Text>
               </View>
-              {improvements != null && improvements.length > 0 ? (
-                improvements.slice(0, 3).map((item, i) => {
-                  const key = `improvement-${i}`;
+              {tipsToShow != null && tipsToShow.length > 0 ? (
+                tipsToShow.slice(0, 4).map((item, i) => {
+                  const key = `tip-${i}`;
                   return (
                     <View key={key} style={styles.bulletRow}>
                       <Text style={[styles.bullet, { color: COLORS.scoreAmber }]}>{"\u2022"}</Text>
@@ -530,36 +508,42 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.accent,
   },
-  // Section score chips
-  chipsScroll: {
+  // Industry Fit
+  industryCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  chipsRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingRight: 4,
-  },
-  chip: {
+  industryRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 6,
+    marginBottom: 10,
   },
-  chipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  chipName: {
+  industryName: {
+    width: 110,
     fontSize: 13,
     fontWeight: "600",
     color: COLORS.text,
   },
-  chipScore: {
+  barBackground: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 10,
+  },
+  barFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  industryScore: {
+    width: 28,
     fontSize: 13,
     fontWeight: "700",
+    textAlign: "right",
   },
   // Insights
   insightsRow: {
