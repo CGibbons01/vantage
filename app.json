@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Vantage ai recruitment",
-    "slug": "vantage-ai-recruitment",
+    "slug": "vantage",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-lca.png",
@@ -32,7 +32,7 @@
         "foregroundImage": "./assets/images/app-icon-lca.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.placeholder.app"
+      "package": "com.gibbonsrecruitment.VantageAI"
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
@@ -56,7 +56,7 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://gwud9jhy8v3d2k6g3hegh7fncuhskkcs.app.specular.dev",
+      "backendUrl": "https://ec3dfzassvmvqgy7qsx85637q4bypjsu.app.specular.dev",
       "revenueCatApiKeyIos": "appl_RZUixsPyxzqSXhLNiJiPfvbAHbV",
       "revenueCatApiKeyAndroid": "goog_XmUPULdxiZiiPIiYHyVtlcBSHFc",
       "revenueCatEntitlementId": "pro",
