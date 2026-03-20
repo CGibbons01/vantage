@@ -265,19 +265,27 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
     app.logger.info({ userId: session.user.id }, 'Processing CV upload');
 
     try {
-      let fileData: any;
+      let fileData: any = null;
+
+      // Parse multipart form data to find the "cv" field
       try {
-        fileData = await request.file();
-      } catch (fileError) {
-        app.logger.error({ err: fileError }, 'Error reading file from request');
-        return reply.status(400).send({ error: 'Failed to read uploaded file' });
+        const parts = request.parts();
+        for await (const part of parts) {
+          if (part.type === 'file' && part.fieldname === 'cv') {
+            fileData = part;
+            break;
+          }
+        }
+      } catch (partsError) {
+        app.logger.error({ err: partsError }, 'Error parsing multipart form');
+        return reply.status(400).send({ error: 'Invalid multipart form data' });
       }
 
       if (!fileData) {
-        return reply.status(400).send({ error: 'No file uploaded' });
+        return reply.status(400).send({ error: 'No CV file uploaded' });
       }
 
-      if (!fileData.mimetype.includes('pdf')) {
+      if (!fileData.mimetype.toLowerCase().includes('pdf')) {
         return reply.status(400).send({ error: 'File must be a PDF' });
       }
 
