@@ -10,6 +10,9 @@ import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
 import { generatePDF, extractTextFromFile } from '../utils/document.js';
 
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
+
 const cvGenerateBodySchema = z.object({
   name: z.string(),
   email: z.string().email(),
@@ -446,7 +449,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   // POST /api/cv/score
   fastify.post('/api/cv/score', {
     schema: {
-      description: 'Score a CV and get improvement tips',
+      description: 'Upload a CV file, extract text, score it with AI, and return results',
       tags: ['ai', 'cv'],
       response: {
         200: {
@@ -479,30 +482,102 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     app.logger.info({ userId: session.user.id }, 'CV score request received');
 
     try {
-      // Read cv_text from profiles table
-      app.logger.debug({ userId: session.user.id }, 'Fetching CV text from profiles table');
-      const profileRows = await app.db
-        .select({ cvText: schema.profiles.cvText })
-        .from(schema.profiles)
-        .where(eq(schema.profiles.userId, session.user.id));
+      // Read multipart form data
+      const parts = request.parts();
+      let fileBuffer: Buffer | null = null;
+      let filename = '';
 
-      if (!profileRows || profileRows.length === 0 || !profileRows[0].cvText) {
-        app.logger.warn({ userId: session.user.id }, 'No CV text found in profiles');
-        return reply.status(400).send({ error: 'No CV text found in user profile' });
+      for await (const part of parts) {
+        const partAny = part as any;
+        if (partAny.fieldname === 'cv') {
+          // Try to read the file stream
+          try {
+            const chunks: Buffer[] = [];
+            for await (const chunk of partAny) {
+              chunks.push(chunk);
+            }
+            if (chunks.length > 0) {
+              fileBuffer = Buffer.concat(chunks);
+            }
+          } catch {
+            // Fallback: try other methods
+            if (partAny.file) {
+              const chunks: Buffer[] = [];
+              for await (const chunk of partAny.file) {
+                chunks.push(chunk);
+              }
+              if (chunks.length > 0) {
+                fileBuffer = Buffer.concat(chunks);
+              }
+            } else if (typeof partAny.toBuffer === 'function') {
+              fileBuffer = await partAny.toBuffer();
+            }
+          }
+
+          filename = partAny.filename || 'cv';
+          break;
+        }
       }
 
-      const cvText = profileRows[0].cvText;
-      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text retrieved successfully');
+      if (!fileBuffer) {
+        app.logger.warn({ userId: session.user.id }, 'No CV file uploaded');
+        return reply.status(400).send({ error: 'No CV file uploaded' });
+      }
+
+      // Extract text from file based on extension
+      let cvText = '';
+      try {
+        if (filename.toLowerCase().endsWith('.pdf')) {
+          app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
+          const data = await pdfParse(fileBuffer);
+          cvText = data.text || '';
+        } else if (filename.toLowerCase().endsWith('.docx')) {
+          app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
+          const result = await mammoth.extractRawText({ buffer: fileBuffer });
+          cvText = result.value || '';
+        } else {
+          app.logger.debug({ userId: session.user.id }, 'Treating file as plain text');
+          cvText = fileBuffer.toString('utf-8');
+        }
+      } catch (extractError) {
+        app.logger.warn({ err: extractError, filename }, 'Text extraction failed, falling back to UTF-8');
+        cvText = fileBuffer.toString('utf-8');
+      }
+
+      if (!cvText || cvText.trim().length === 0) {
+        app.logger.warn({ userId: session.user.id }, 'No text extracted from CV file');
+        return reply.status(400).send({ error: 'Could not extract text from the uploaded file' });
+      }
+
+      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text extracted successfully');
+
+      // Save cv_text to profile
+      try {
+        await app.db.insert(schema.profiles)
+          .values({
+            userId: session.user.id,
+            cvText: cvText,
+            cvFilename: filename,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: schema.profiles.userId,
+            set: {
+              cvText: cvText,
+              cvFilename: filename,
+              updatedAt: new Date(),
+            },
+          });
+
+        app.logger.debug({ userId: session.user.id }, 'Saved CV text to profile');
+      } catch (dbError) {
+        app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV text to profile');
+      }
 
       // Use OpenAI to score the CV
-      const scorePrompt = `You are an expert CV/resume analyst and career coach. Analyse the following CV text and return a structured evaluation.
+      const scorePrompt = `Analyse this CV and return: an overall_score (0-100) reflecting CV quality and strength, industry_scores as an array of 5-8 relevant industries with scores (0-100) based on how well the CV fits each industry, industry_fit as a short label for the best-fit role/industry, and improvement_tips as 3-5 specific actionable tips to strengthen the CV.
 
-- overall_score: A number from 0–100 reflecting the overall quality and strength of the CV (consider clarity, structure, achievements, keywords, and completeness).
-- industry_scores: An array of 5–8 objects, each with an 'industry' (string) and 'score' (0–100) field. Score each industry based on how well this CV fits that industry. Choose industries that are most relevant to the CV content.
-- industry_fit: A short string (e.g. 'Software Engineering', 'Financial Analysis') describing the single best-fit industry or role type for this CV.
-- improvement_tips: An array of 3–5 specific, actionable tips to strengthen this CV for the candidate's target industries. Be concrete and practical.
-
-CV Text:
+CV:
 ${cvText}`;
 
       const scoreSchema = z.object({
@@ -535,12 +610,13 @@ ${cvText}`;
 
       app.logger.info({ userId: session.user.id, score: scoreData.overall_score }, 'CV scored successfully');
 
-      // Save to profiles table (upsert by user_id)
+      // Save AI results to profile
       try {
         await app.db.insert(schema.profiles)
           .values({
             userId: session.user.id,
             overallScore: scoreData.overall_score,
+            cvScore: scoreData.overall_score,
             industryScores: JSON.stringify(scoreData.industry_scores),
             industryFit: scoreData.industry_fit,
             improvementTips: JSON.stringify(scoreData.improvement_tips),
@@ -550,6 +626,7 @@ ${cvText}`;
             target: schema.profiles.userId,
             set: {
               overallScore: scoreData.overall_score,
+              cvScore: scoreData.overall_score,
               industryScores: JSON.stringify(scoreData.industry_scores),
               industryFit: scoreData.industry_fit,
               improvementTips: JSON.stringify(scoreData.improvement_tips),
@@ -573,7 +650,7 @@ ${cvText}`;
       const errorStack = error instanceof Error ? error.stack : '';
       const details = errorMsg || 'Unknown error occurred';
       app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to score CV');
-      return reply.status(500).send({ error: 'Scoring failed', details });
+      return reply.status(500).send({ error: 'Internal server error', details });
     }
   });
 
@@ -790,40 +867,29 @@ ${cvText}`;
 
       app.logger.debug({ fileBufferLength: fileBuffer.length, filename }, 'File buffer ready for text extraction');
 
-      // Extract text from file
+      // Extract text from file based on extension
       let cvText = '';
       try {
-        app.logger.debug({ filename, fileBufferLength: fileBuffer.length }, 'Attempting extractTextFromFile');
-        cvText = await extractTextFromFile(fileBuffer, filename);
-        app.logger.debug({ textLength: cvText?.length || 0 }, 'extractTextFromFile completed');
-
-        if (!cvText || cvText.trim().length === 0) {
-          app.logger.warn({ filename }, 'extractTextFromFile returned empty text, trying UTF-8 fallback');
-          cvText = fileBuffer.toString('utf-8');
-          if (!cvText || cvText.trim().length === 0) {
-            app.logger.warn('UTF-8 fallback also produced empty text');
-            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
-          }
-          app.logger.debug({ textLength: cvText.length }, 'UTF-8 fallback succeeded');
+        if (filename.toLowerCase().endsWith('.pdf')) {
+          app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
+          const data = await pdfParse(fileBuffer);
+          cvText = data.text || '';
+        } else if (filename.toLowerCase().endsWith('.docx')) {
+          app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
+          const result = await mammoth.extractRawText({ buffer: fileBuffer });
+          cvText = result.value || '';
         } else {
-          app.logger.debug({ textLength: cvText.length }, 'CV text extracted successfully');
+          app.logger.debug({ userId: session.user.id }, 'Treating file as plain text');
+          cvText = fileBuffer.toString('utf-8');
         }
       } catch (extractError) {
-        // Fallback: treat as plain text if extraction fails
-        const extractMsg = extractError instanceof Error ? extractError.message : String(extractError);
-        app.logger.debug({ err: extractError, filename, message: extractMsg }, 'extractTextFromFile failed, falling back to UTF-8 conversion');
-        try {
-          cvText = fileBuffer.toString('utf-8');
-          if (!cvText || cvText.trim().length === 0) {
-            app.logger.warn('UTF-8 conversion produced empty text');
-            return reply.status(400).send({ error: 'No valid text extracted from CV file' });
-          }
-          app.logger.debug({ textLength: cvText.length }, 'CV text read as UTF-8 fallback');
-        } catch (utf8Error) {
-          const utf8Msg = utf8Error instanceof Error ? utf8Error.message : String(utf8Error);
-          app.logger.error({ err: utf8Error, message: utf8Msg }, 'UTF-8 conversion also failed');
-          throw new Error(`Failed to extract text from file: ${utf8Msg}`);
-        }
+        app.logger.warn({ err: extractError, filename }, 'Text extraction failed, falling back to UTF-8');
+        cvText = fileBuffer.toString('utf-8');
+      }
+
+      if (!cvText || cvText.trim().length === 0) {
+        app.logger.warn({ userId: session.user.id }, 'No text extracted from CV file');
+        return reply.status(400).send({ error: 'Could not extract text from the uploaded file' });
       }
 
       app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
@@ -831,16 +897,16 @@ ${cvText}`;
 
       // Use OpenAI to extract structured CV data
       const parseSchema = z.object({
-        name: z.string().nullish(),
-        email: z.string().nullish(),
-        phone: z.string().nullish(),
-        location: z.string().nullish(),
-        headline: z.string().nullish(),
-        summary: z.string().nullish(),
-        skills: z.array(z.string()).nullish(),
-        experience: z.array(z.any()).nullish(),
-        education: z.array(z.any()).nullish(),
-      });
+        name: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        location: z.string().optional(),
+        headline: z.string().optional(),
+        summary: z.string().optional(),
+        skills: z.array(z.any()).optional(),
+        experience: z.array(z.any()).optional(),
+        education: z.array(z.any()).optional(),
+      }).passthrough();
 
       app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV parsing');
       let parsedData;
@@ -848,16 +914,16 @@ ${cvText}`;
         const result = await generateObject({
           model: gateway('openai/gpt-4o'),
           schema: parseSchema,
-          prompt: `Extract structured CV information from this CV text:\n\nCV Text:\n${cvText}\n\nFor any sections not found, return empty arrays or null. Return JSON with: name, email, phone, location, headline, summary (strings or null), skills, experience, education (arrays).`,
+          prompt: `Extract key CV information from this text:\n\nCV Text:\n${cvText}\n\nReturn JSON with: name, email, phone, location, headline, summary (strings or null if not found), skills (array of strings), experience (array of job objects), education (array of education objects).`,
         });
         if (!result || !result.object) {
           throw new Error('generateObject returned invalid result: no object property');
         }
         parsedData = result.object;
         // Ensure arrays have default values if null or undefined
-        parsedData.skills = parsedData.skills || [];
-        parsedData.experience = parsedData.experience || [];
-        parsedData.education = parsedData.education || [];
+        parsedData.skills = Array.isArray(parsedData.skills) ? parsedData.skills : [];
+        parsedData.experience = Array.isArray(parsedData.experience) ? parsedData.experience : [];
+        parsedData.education = Array.isArray(parsedData.education) ? parsedData.education : [];
         app.logger.debug({ name: parsedData.name }, 'generateObject returned successfully');
       } catch (genError) {
         app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV parsing');
