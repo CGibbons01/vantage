@@ -475,45 +475,78 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       let jobDescription: string | null = null;
 
       const parts = request.parts();
-      let fileBuffer = null;
+      let fileBuffer: Buffer | null = null;
       let filename = 'upload';
       let mimetype = 'application/octet-stream';
 
       for await (const part of parts) {
         const partAny = part as any;
         if (partAny.fieldname === 'cv') {
-          console.log('cv part shape:', {
+          app.logger.debug({
             type: partAny.type,
             filename: partAny.filename,
-            mimetype: partAny.mimetype,
-            typeofFile: typeof partAny.file,
-            typeofToBuffer: typeof partAny.toBuffer,
-          });
+            hasFile: !!partAny.file,
+            hasToBuffer: typeof partAny.toBuffer,
+            hasValue: !!partAny.value,
+          }, 'Processing cv part');
+
           try {
-            if (partAny.file) {
-              // file part — stream the chunks
-              const chunks = [];
+            // Strategy 1: Try to iterate part directly as stream (Fastify multipart file format)
+            try {
+              const chunks: Buffer[] = [];
+              for await (const chunk of partAny) {
+                chunks.push(chunk);
+              }
+              if (chunks.length > 0) {
+                fileBuffer = Buffer.concat(chunks);
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from part stream');
+              }
+            } catch (streamError) {
+              app.logger.debug({ err: streamError }, 'Part stream iteration failed, trying alternatives');
+            }
+
+            // Strategy 2: Try .file property if part iteration didn't work
+            if (!fileBuffer && partAny.file) {
+              const chunks: Buffer[] = [];
               for await (const chunk of partAny.file) {
                 chunks.push(chunk);
               }
-              fileBuffer = Buffer.concat(chunks);
-              filename = partAny.filename || 'upload';
-              mimetype = partAny.mimetype || 'application/octet-stream';
-            } else if (typeof partAny.toBuffer === 'function') {
-              fileBuffer = await partAny.toBuffer();
-              filename = partAny.filename || 'upload';
-              mimetype = partAny.mimetype || 'application/octet-stream';
-            } else {
-              // field part fallback
-              const val = partAny.value;
-              if (Buffer.isBuffer(val)) {
-                fileBuffer = val;
-              } else if (typeof val === 'string') {
-                fileBuffer = Buffer.from(val, 'binary');
+              if (chunks.length > 0) {
+                fileBuffer = Buffer.concat(chunks);
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .file stream');
               }
             }
+
+            // Strategy 3: Try toBuffer() method
+            if (!fileBuffer && typeof partAny.toBuffer === 'function') {
+              try {
+                fileBuffer = await partAny.toBuffer();
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file using toBuffer');
+              } catch (toBufferError) {
+                app.logger.debug({ err: toBufferError }, 'toBuffer() failed');
+              }
+            }
+
+            // Strategy 4: Try to use .value as fallback (could be string or buffer)
+            if (!fileBuffer && partAny.value !== undefined) {
+              if (Buffer.isBuffer(partAny.value)) {
+                fileBuffer = partAny.value;
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .value (Buffer)');
+              } else if (typeof partAny.value === 'string' && partAny.value.length > 0) {
+                fileBuffer = Buffer.from(partAny.value, 'utf-8');
+                app.logger.debug({ bufferSize: fileBuffer.length, preview: partAny.value.substring(0, 50) }, 'Read file from .value (string)');
+              }
+            }
+
+            // Set filename and mimetype from part if available
+            if (partAny.filename) {
+              filename = partAny.filename;
+            }
+            if (partAny.mimetype) {
+              mimetype = partAny.mimetype;
+            }
           } catch (e) {
-            console.error('Error reading cv part:', e);
+            app.logger.warn({ err: e }, 'Error reading cv part');
           }
           break;
         } else if (partAny.fieldname === 'job_description') {
@@ -575,7 +608,18 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       const scoreSchema = z.object({
         overall_score: z.number().int().min(0).max(100),
         industry_fit: z.string(),
-        industry_scores: z.record(z.string(), z.number().int().min(0).max(100)),
+        industry_scores: z.object({
+          technology: z.number().int().min(0).max(100),
+          finance: z.number().int().min(0).max(100),
+          healthcare: z.number().int().min(0).max(100),
+          marketing: z.number().int().min(0).max(100),
+          sales: z.number().int().min(0).max(100),
+          engineering: z.number().int().min(0).max(100),
+          education: z.number().int().min(0).max(100),
+          legal: z.number().int().min(0).max(100),
+          consulting: z.number().int().min(0).max(100),
+          other: z.number().int().min(0).max(100),
+        }).partial(),
         strengths: z.array(z.string()),
         improvements: z.array(z.string()),
         summary: z.string(),
@@ -771,45 +815,78 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
     try {
       const parts = request.parts();
-      let fileBuffer = null;
+      let fileBuffer: Buffer | null = null;
       let filename = 'upload';
       let mimetype = 'application/octet-stream';
 
       for await (const part of parts) {
         const partAny = part as any;
         if (partAny.fieldname === 'cv') {
-          console.log('cv part shape:', {
+          app.logger.debug({
             type: partAny.type,
             filename: partAny.filename,
-            mimetype: partAny.mimetype,
-            typeofFile: typeof partAny.file,
-            typeofToBuffer: typeof partAny.toBuffer,
-          });
+            hasFile: !!partAny.file,
+            hasToBuffer: typeof partAny.toBuffer,
+            hasValue: !!partAny.value,
+          }, 'Processing cv part');
+
           try {
-            if (partAny.file) {
-              // file part — stream the chunks
-              const chunks = [];
+            // Strategy 1: Try to iterate part directly as stream (Fastify multipart file format)
+            try {
+              const chunks: Buffer[] = [];
+              for await (const chunk of partAny) {
+                chunks.push(chunk);
+              }
+              if (chunks.length > 0) {
+                fileBuffer = Buffer.concat(chunks);
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from part stream');
+              }
+            } catch (streamError) {
+              app.logger.debug({ err: streamError }, 'Part stream iteration failed, trying alternatives');
+            }
+
+            // Strategy 2: Try .file property if part iteration didn't work
+            if (!fileBuffer && partAny.file) {
+              const chunks: Buffer[] = [];
               for await (const chunk of partAny.file) {
                 chunks.push(chunk);
               }
-              fileBuffer = Buffer.concat(chunks);
-              filename = partAny.filename || 'upload';
-              mimetype = partAny.mimetype || 'application/octet-stream';
-            } else if (typeof partAny.toBuffer === 'function') {
-              fileBuffer = await partAny.toBuffer();
-              filename = partAny.filename || 'upload';
-              mimetype = partAny.mimetype || 'application/octet-stream';
-            } else {
-              // field part fallback
-              const val = partAny.value;
-              if (Buffer.isBuffer(val)) {
-                fileBuffer = val;
-              } else if (typeof val === 'string') {
-                fileBuffer = Buffer.from(val, 'binary');
+              if (chunks.length > 0) {
+                fileBuffer = Buffer.concat(chunks);
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .file stream');
               }
             }
+
+            // Strategy 3: Try toBuffer() method
+            if (!fileBuffer && typeof partAny.toBuffer === 'function') {
+              try {
+                fileBuffer = await partAny.toBuffer();
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file using toBuffer');
+              } catch (toBufferError) {
+                app.logger.debug({ err: toBufferError }, 'toBuffer() failed');
+              }
+            }
+
+            // Strategy 4: Try to use .value as fallback (could be string or buffer)
+            if (!fileBuffer && partAny.value !== undefined) {
+              if (Buffer.isBuffer(partAny.value)) {
+                fileBuffer = partAny.value;
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .value (Buffer)');
+              } else if (typeof partAny.value === 'string' && partAny.value.length > 0) {
+                fileBuffer = Buffer.from(partAny.value, 'utf-8');
+                app.logger.debug({ bufferSize: fileBuffer.length, preview: partAny.value.substring(0, 50) }, 'Read file from .value (string)');
+              }
+            }
+
+            // Set filename and mimetype from part if available
+            if (partAny.filename) {
+              filename = partAny.filename;
+            }
+            if (partAny.mimetype) {
+              mimetype = partAny.mimetype;
+            }
           } catch (e) {
-            console.error('Error reading cv part:', e);
+            app.logger.warn({ err: e }, 'Error reading cv part');
           }
           break;
         }
