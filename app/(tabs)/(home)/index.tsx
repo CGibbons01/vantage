@@ -126,53 +126,63 @@ export default function HomeScreen() {
   };
 
   const handleUploadCV = async () => {
-    console.log("[Dashboard] Upload CV button pressed");
+    console.log('[Dashboard] Upload CV button pressed');
     setUploadError(null);
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
-          "application/pdf",
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ],
         copyToCacheDirectory: true,
       });
 
       if (result.canceled) {
-        console.log("[Dashboard] Document picker cancelled");
+        console.log('[Dashboard] Document picker cancelled');
         return;
       }
 
       const file = result.assets[0];
-      const fileName = file.name ?? "cv.pdf";
-      const mimeType = getMimeType(fileName);
-      console.log("[Dashboard] CV file selected:", fileName, "mime:", mimeType, "uri:", file.uri);
+      const fileName = file.name ?? 'cv.pdf';
+      const lower = fileName.toLowerCase();
+      const mimeType = lower.endsWith('.docx')
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : lower.endsWith('.doc')
+        ? 'application/msword'
+        : 'application/pdf';
 
+      console.log('[Dashboard] CV file selected:', fileName, 'mime:', mimeType);
       setUploading(true);
 
-      const token = await getBearerToken();
-      const formData = new FormData();
-      formData.append("cv", {
-        uri: file.uri,
-        name: fileName,
-        type: mimeType,
-      } as any);
+      // Read file as base64
+      const { default: FS, EncodingType } = await import('expo-file-system');
+      const base64 = await FS.readAsStringAsync(file.uri, { encoding: EncodingType.Base64 });
+      console.log('[Dashboard] File read as base64, length:', base64.length);
 
-      console.log("[Dashboard] POST /api/cv/score — uploading CV");
+      const token = await getBearerToken();
+      console.log('[Dashboard] POST /api/cv/score — sending base64 JSON');
       const response = await fetch(`${BACKEND_URL}/api/cv/score`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          file_base64: base64,
+          file_name: fileName,
+          mime_type: mimeType,
+        }),
       });
 
       if (!response.ok) {
         const text = await response.text();
-        console.log("[Dashboard] CV upload failed:", response.status, text);
+        console.log('[Dashboard] CV upload failed:', response.status, text);
         throw new Error(`Upload failed (${response.status}): ${text.slice(0, 120)}`);
       }
 
-      const data: CvScoreResult = await response.json();
-      console.log("[Dashboard] CV score result:", data);
+      const data = await response.json();
+      console.log('[Dashboard] CV score result:', data);
 
       setCvScore(data.overall_score ?? data.score ?? null);
       setIndustryFit(data.industry_fit ?? null);
@@ -182,8 +192,8 @@ export default function HomeScreen() {
       setUploadStrengths(data.strengths ?? null);
       setUploadImprovements(data.improvements ?? null);
     } catch (err: any) {
-      console.log("[Dashboard] CV upload error:", err?.message ?? err);
-      setUploadError(err?.message ?? "Upload failed. Please try again.");
+      console.log('[Dashboard] CV upload error:', err?.message ?? err);
+      setUploadError(err?.message ?? 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
