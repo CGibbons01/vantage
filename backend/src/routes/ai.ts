@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createRequire } from 'module';
 import { eq } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
-import { generateObject, generateText } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
 import mammoth from 'mammoth';
 import * as schema from '../db/schema/schema.js';
@@ -429,16 +429,18 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   }
 ]`;
 
-      const { object } = await generateObject({
+      const { output } = await generateText({
         model: gateway('openai/gpt-4o'),
-        schema: jobMatchResponseSchema,
-        schemaName: 'JobMatches',
-        schemaDescription: 'CV match analysis against multiple jobs',
+        output: Output.object({
+          schema: jobMatchResponseSchema,
+          name: 'JobMatches',
+          description: 'CV match analysis against multiple jobs',
+        }),
         prompt,
       });
 
-      app.logger.info({ userId: session.user.id, jobCount: object.matches.length }, 'Job matches analyzed successfully');
-      return object;
+      app.logger.info({ userId: session.user.id, jobCount: output.matches.length }, 'Job matches analyzed successfully');
+      return output;
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to analyze job matches');
       return reply.status(500).send({ error: 'Failed to analyze job matches' });
@@ -448,30 +450,18 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   // POST /api/cv/score
   fastify.post('/api/cv/score', {
     schema: {
-      description: 'Score and analyze a CV with detailed insights using GPT-4o',
+      description: 'Score a CV file and extract insights',
       tags: ['ai', 'cv'],
       response: {
         200: {
           type: 'object',
           properties: {
-            score: { type: 'integer' },
+            overall_score: { type: 'integer' },
             industry_fit: { type: 'string' },
-            skills: { type: 'array', items: { type: 'string' } },
-            summary: { type: 'string' },
+            industry_scores: { type: 'object' },
             strengths: { type: 'array', items: { type: 'string' } },
-            weaknesses: { type: 'array', items: { type: 'string' } },
             improvements: { type: 'array', items: { type: 'string' } },
-            section_scores: {
-              type: 'object',
-              properties: {
-                summary: { type: 'integer' },
-                experience: { type: 'integer' },
-                education: { type: 'integer' },
-                skills: { type: 'integer' },
-                formatting: { type: 'integer' },
-              },
-            },
-            profile_updated: { type: 'boolean' },
+            summary: { type: 'string' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -483,192 +473,108 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    // Log request details for debugging
-    const contentType = request.headers['content-type'];
-    app.logger.info({ userId: session.user.id, contentType }, 'CV score request received');
+    app.logger.info({ userId: session.user.id }, 'CV score request received');
 
     try {
-      // Parse multipart form data
       let cvFile: any = null;
       let jobDescription: string | null = null;
-      let cvText: string = '';
-      let cvFilename: string = '';
+      const receivedFieldnames: string[] = [];
 
       try {
         const parts = request.parts();
         for await (const part of parts) {
-          // Accept the first file, regardless of field name
+          receivedFieldnames.push(part.fieldname);
+          app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Received multipart part');
+
+          // Accept first file part regardless of field name
           if (part.type === 'file' && !cvFile) {
             cvFile = part;
-          } else if (part.type === 'field' && part.fieldname === 'jobDescription') {
+          } else if (part.type === 'field' && part.fieldname === 'job_description') {
             jobDescription = part.value as string;
           }
         }
       } catch (partsError) {
-        app.logger.error({ err: partsError, stack: (partsError as Error).stack }, 'Error parsing multipart form');
+        app.logger.error({ err: partsError }, 'Error parsing multipart form');
         return reply.status(400).send({ error: 'Invalid multipart form data' });
       }
 
       if (!cvFile) {
-        return reply.status(400).send({ error: 'No CV file uploaded' });
+        const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : '(none)';
+        app.logger.warn({ receivedFields: fieldList }, 'No file found in multipart form');
+        return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
       }
 
-      cvFilename = cvFile.filename;
-      const mimeTypeLower = (cvFile.mimetype || '').toLowerCase();
-      const filenameLower = (cvFile.filename || '').toLowerCase();
+      // Read file as UTF-8 string
+      app.logger.debug({ fileName: cvFile.filename }, 'Reading file buffer');
+      const buffer = await cvFile.toBuffer();
+      const cvText = buffer.toString('utf-8');
 
-      const isPDF = mimeTypeLower === 'application/pdf' || filenameLower.endsWith('.pdf');
-      const isWord = mimeTypeLower === 'application/msword' ||
-                     mimeTypeLower === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                     filenameLower.endsWith('.doc') ||
-                     filenameLower.endsWith('.docx');
-      const isText = mimeTypeLower === 'text/plain' || filenameLower.endsWith('.txt');
+      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
 
-      if (!isPDF && !isWord && !isText) {
-        return reply.status(400).send({ error: `Unsupported file type. Please upload a PDF or Word document.` });
-      }
+      // Use OpenAI to score the CV
+      const scorePrompt = jobDescription
+        ? `Score this CV against the job description. Provide an overall score (0-100), industry fit assessment, scores for relevant industries, key strengths, areas for improvement, and a summary.\n\nCV:\n${cvText}\n\nJob Description:\n${jobDescription}`
+        : `Score this CV across multiple industries. Provide an overall score (0-100), best industry fit, scores for relevant industries, key strengths, areas for improvement, and a summary.\n\nCV:\n${cvText}`;
 
-      // Get file buffer
-      let buffer: Buffer;
+      const scoreSchema = z.object({
+        overall_score: z.number().int().min(0).max(100),
+        industry_fit: z.string(),
+        industry_scores: z.record(z.string(), z.number().int().min(0).max(100)),
+        strengths: z.array(z.string()).min(3).max(5),
+        improvements: z.array(z.string()).min(3).max(5),
+        summary: z.string(),
+      });
+
+      app.logger.debug({ userId: session.user.id }, 'Calling generateText for CV scoring');
+      const { output: scoreData } = await generateText({
+        model: gateway('openai/gpt-4o'),
+        output: Output.object({
+          schema: scoreSchema,
+          name: 'CVScore',
+          description: 'CV scoring and analysis',
+        }),
+        prompt: scorePrompt,
+      });
+
+      app.logger.info({ userId: session.user.id, score: scoreData.overall_score }, 'CV scored successfully');
+
+      // Save to profiles table (upsert by user_id)
       try {
-        buffer = await cvFile.toBuffer();
-        if (buffer.length > 10 * 1024 * 1024) {
-          return reply.status(413).send({ error: 'File size exceeds 10 MB limit' });
-        }
-      } catch (bufferError) {
-        app.logger.error({ err: bufferError, stack: (bufferError as Error).stack }, 'Error reading file buffer');
-        return reply.status(400).send({ error: 'Failed to read uploaded file' });
-      }
-
-      // Extract text based on file type using shared utility
-      app.logger.info({ fileName: cvFilename, mimeType: cvFile.mimetype }, 'Extracting text from CV file');
-      try {
-        cvText = await extractTextFromFile(buffer, cvFile.mimetype);
-
-        if (!cvText || cvText.trim().length === 0) {
-          cvText = 'CV content could not be extracted from file';
-        }
-      } catch (extractError) {
-        app.logger.warn({ err: extractError, stack: (extractError as Error).stack }, 'Text extraction failed');
-        cvText = buffer.toString('utf-8', 0, Math.min(5000, buffer.length)) || 'CV content could not be extracted';
-      }
-
-      // Analyze CV with AI
-      app.logger.info({ userId: session.user.id, cvLength: cvText.length }, 'Analyzing CV with AI for comprehensive scoring');
-
-      const prompt = `Analyze this CV and rate it 0-100. Extract top skills. Identify 2-3 strengths and weaknesses. Suggest 2-3 improvements. Rate each section.
-
-CV: ${cvText.substring(0, 1000)}
-
-Return ONLY valid JSON matching this schema:
-{"score": 75, "industry_fit": "Technology", "skills": ["JavaScript"], "summary": "Assessment here", "strengths": ["Strength 1"], "weaknesses": ["Weakness 1"], "improvements": ["Improvement 1"], "section_scores": {"summary": 70, "experience": 80, "education": 80, "skills": 90, "formatting": 75}}`;
-
-      try {
-        const { object } = await generateObject({
-          model: gateway('openai/gpt-4o-mini'),
-          schema: cvScoreResponseSchema,
-          schemaName: 'CVScore',
-          schemaDescription: 'Detailed CV analysis and scoring',
-          prompt,
-        });
-
-        // Extract profile fields from CV text using AI
-        let profileData: any = {};
-        let profileUpdateFailed = false;
-
-        try {
-          const profileExtractPrompt = `Extract the following information from this CV text and return ONLY valid JSON: name, email, phone, location, headline (professional title), summary (professional summary), linkedin_url, skills (array of strings). If a field is not found, use null for strings or empty array for arrays. CV text: ${cvText.substring(0, 2000)}`;
-
-          const profileSchema = z.object({
-            name: z.string().nullable(),
-            email: z.string().nullable(),
-            phone: z.string().nullable(),
-            location: z.string().nullable(),
-            headline: z.string().nullable(),
-            summary: z.string().nullable(),
-            linkedin_url: z.string().nullable(),
-            skills: z.array(z.string()).default([]),
+        await app.db.insert(schema.profiles)
+          .values({
+            userId: session.user.id,
+            cvScore: scoreData.overall_score,
+            industryFit: scoreData.industry_fit,
+            industryScores: JSON.stringify(scoreData.industry_scores),
+            overallScore: scoreData.overall_score,
+            cvFilename: cvFile.filename,
+            cvText: cvText,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: schema.profiles.userId,
+            set: {
+              cvScore: scoreData.overall_score,
+              industryFit: scoreData.industry_fit,
+              industryScores: JSON.stringify(scoreData.industry_scores),
+              overallScore: scoreData.overall_score,
+              cvFilename: cvFile.filename,
+              cvText: cvText,
+              updatedAt: new Date(),
+            },
           });
 
-          const { object: extractedProfile } = await generateObject({
-            model: gateway('openai/gpt-4o-mini'),
-            schema: profileSchema,
-            prompt: profileExtractPrompt,
-          });
-
-          profileData = extractedProfile;
-        } catch (extractError) {
-          app.logger.warn({ err: extractError }, 'Failed to extract profile fields from CV, continuing with score only');
-          profileUpdateFailed = true;
-        }
-
-        // Upsert profile with extracted fields and scores
-        if (session?.user?.id) {
-          try {
-            const updateData: any = {
-              cvScore: object.score,
-              industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
-              industryScores: JSON.stringify(object.section_scores || {}),
-              overallScore: object.score,
-              cvText,
-              cvFilename,
-              updatedAt: new Date(),
-            };
-
-            // Only update profile fields if extraction was successful
-            if (!profileUpdateFailed && profileData) {
-              if (profileData.headline) updateData.headline = profileData.headline;
-              if (profileData.summary) updateData.summary = profileData.summary;
-              if (profileData.location) updateData.location = profileData.location;
-              if (profileData.phone) updateData.phone = profileData.phone;
-              if (profileData.linkedin_url) updateData.linkedinUrl = profileData.linkedin_url;
-              if (profileData.skills && profileData.skills.length > 0) updateData.skills = JSON.stringify(profileData.skills);
-            }
-
-            // Upsert: insert with conflict resolution on userId
-            const insertData = {
-              userId: session.user.id,
-              headline: profileData.headline || '',
-              summary: profileData.summary || '',
-              location: profileData.location || '',
-              phone: profileData.phone || '',
-              linkedinUrl: profileData.linkedin_url || '',
-              skills: profileData.skills ? JSON.stringify(profileData.skills) : '[]',
-              experience: '[]',
-              education: '[]',
-              cvScore: object.score,
-              industryFit: JSON.stringify({ industry: object.industry_fit, score: object.score, reasoning: object.summary }),
-              industryScores: JSON.stringify(object.section_scores || {}),
-              overallScore: object.score,
-              cvText,
-              cvFilename,
-              updatedAt: new Date(),
-            };
-
-            await app.db.insert(schema.profiles)
-              .values(insertData)
-              .onConflictDoUpdate({
-                target: schema.profiles.userId,
-                set: updateData,
-              })
-              .returning();
-
-            app.logger.info({ userId: session.user.id, cvScore: object.score, fileName: cvFilename }, 'Profile updated with CV score and extracted fields');
-          } catch (updateError) {
-            app.logger.warn({ err: updateError, stack: (updateError as Error).stack, userId: session.user.id }, 'Failed to update profile with CV score');
-            // Continue anyway - return the score even if profile update fails
-          }
-        }
-
-        app.logger.info({ userId: session.user.id, score: object.score }, 'CV scored successfully');
-        return { ...object, profile_updated: true };
-      } catch (aiError) {
-        app.logger.error({ err: aiError, stack: (aiError as Error).stack, userId: session.user.id }, 'AI analysis failed');
-        return reply.status(500).send({ error: 'Failed to analyze CV with AI' });
+        app.logger.info({ userId: session.user.id }, 'Profile updated with CV score');
+      } catch (dbError) {
+        app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV score to profile, returning score anyway');
       }
+
+      return scoreData;
     } catch (error) {
-      app.logger.error({ err: error, stack: (error as Error).stack, userId: session.user.id }, 'Failed to score CV');
-      return reply.status(500).send({ error: 'Failed to process CV score request' });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : '';
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to score CV');
+      return reply.status(500).send({ error: 'Failed to score CV', details: errorMsg });
     }
   });
 
@@ -767,18 +673,30 @@ Return ONLY valid JSON matching this schema:
   // POST /api/cv/parse
   fastify.post('/api/cv/parse', {
     schema: {
-      description: 'Parse uploaded CV file (PDF or Word) and extract text',
+      description: 'Parse a CV file and extract structured data',
       tags: ['ai', 'cv'],
       response: {
         200: {
           type: 'object',
           properties: {
-            text: { type: 'string' },
+            id: { type: 'string' },
+            userId: { type: 'string' },
+            name: { type: 'string' },
+            email: { type: 'string' },
+            phone: { type: 'string' },
+            location: { type: 'string' },
+            headline: { type: 'string' },
+            summary: { type: 'string' },
+            skills: { type: 'array', items: { type: 'string' } },
+            experience: { type: 'array' },
+            education: { type: 'array' },
+            cvText: { type: 'string' },
+            cvFilename: { type: 'string' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
-        500: { type: 'object', properties: { error: { type: 'string' }, details: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
@@ -788,63 +706,130 @@ Return ONLY valid JSON matching this schema:
     app.logger.info({ userId: session.user.id }, 'CV parse request received');
 
     try {
-      // Find the first file part in the multipart form, regardless of field name
-      let fileData: any = null;
-      const parts = request.parts();
-      for await (const part of parts) {
-        if (part.type === 'file' && part.filename) {
-          fileData = part;
-          break;
-        }
-      }
-
-      if (!fileData) {
-        app.logger.warn({}, 'No file uploaded');
-        return reply.status(400).send({ error: 'No file uploaded' });
-      }
-
-      const filename = fileData.filename.toLowerCase();
-      const mimetype = fileData.mimetype.toLowerCase();
-
-      // Detect file type by mimetype and filename extension
-      const isPDF = mimetype.includes('pdf') || filename.endsWith('.pdf');
-      const isWord =
-        mimetype.includes('word') ||
-        mimetype.includes('officedocument') ||
-        filename.endsWith('.doc') ||
-        filename.endsWith('.docx');
-
-      if (!isPDF && !isWord) {
-        app.logger.warn({ mimetype, filename }, 'Unsupported file type');
-        return reply.status(400).send({
-          error: 'Unsupported file type. Please upload a PDF or Word document.'
-        });
-      }
-
-      const buffer = await fileData.toBuffer();
-      let extractedText = '';
+      let cvFile: any = null;
+      const receivedFieldnames: string[] = [];
 
       try {
-        app.logger.info({ filename }, 'Extracting text from file');
-        extractedText = await extractTextFromFile(buffer, fileData.mimetype);
-      } catch (extractError) {
-        const errorMsg = extractError instanceof Error ? extractError.message : String(extractError);
-        app.logger.error({ err: extractError, filename }, 'Text extraction failed');
-        return reply.status(500).send({
-          error: 'Failed to parse CV',
-          details: errorMsg
-        });
+        const parts = request.parts();
+        for await (const part of parts) {
+          receivedFieldnames.push(part.fieldname);
+          app.logger.debug({ fieldname: part.fieldname, type: part.type }, 'Received multipart part');
+
+          // Accept first file part regardless of field name
+          if (part.type === 'file' && !cvFile) {
+            cvFile = part;
+          }
+        }
+      } catch (partsError) {
+        app.logger.error({ err: partsError }, 'Error parsing multipart form');
+        return reply.status(400).send({ error: 'Invalid multipart form data' });
       }
 
-      app.logger.info({ filename, textLength: extractedText.length }, 'Text extracted successfully');
-      return { text: extractedText };
+      if (!cvFile) {
+        const fieldList = receivedFieldnames.length > 0 ? receivedFieldnames.join(', ') : '(none)';
+        app.logger.warn({ receivedFields: fieldList }, 'No file found in multipart form');
+        return reply.status(400).send({ error: `No CV file found. Parts received: [${fieldList}]` });
+      }
+
+      // Read file as UTF-8 string
+      app.logger.debug({ fileName: cvFile.filename }, 'Reading file buffer');
+      const buffer = await cvFile.toBuffer();
+      const cvText = buffer.toString('utf-8');
+
+      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
+
+      // Use OpenAI to extract structured CV data
+      const parseSchema = z.object({
+        name: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        location: z.string().optional(),
+        headline: z.string().optional(),
+        summary: z.string().optional(),
+        skills: z.array(z.string()).default([]),
+        experience: z.array(z.object({
+          title: z.string(),
+          company: z.string(),
+          duration: z.string(),
+          description: z.string(),
+        })).default([]),
+        education: z.array(z.object({
+          degree: z.string(),
+          institution: z.string(),
+          year: z.string(),
+        })).default([]),
+      });
+
+      app.logger.debug({ userId: session.user.id }, 'Calling generateText for CV parsing');
+      const { output: parsedData } = await generateText({
+        model: gateway('openai/gpt-4o'),
+        output: Output.object({
+          schema: parseSchema,
+          name: 'CVParse',
+          description: 'Extract structured CV information',
+        }),
+        prompt: `Extract structured CV information from this CV text:\n\n${cvText}`,
+      });
+
+      app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
+
+      // Save to profiles table (upsert by user_id)
+      try {
+        const result = await app.db.insert(schema.profiles)
+          .values({
+            userId: session.user.id,
+            headline: parsedData.headline || '',
+            summary: parsedData.summary || '',
+            location: parsedData.location || '',
+            phone: parsedData.phone || '',
+            skills: JSON.stringify(parsedData.skills || []),
+            experience: JSON.stringify(parsedData.experience || []),
+            education: JSON.stringify(parsedData.education || []),
+            cvText: cvText,
+            cvFilename: cvFile.filename,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: schema.profiles.userId,
+            set: {
+              headline: parsedData.headline || '',
+              summary: parsedData.summary || '',
+              location: parsedData.location || '',
+              phone: parsedData.phone || '',
+              skills: JSON.stringify(parsedData.skills || []),
+              experience: JSON.stringify(parsedData.experience || []),
+              education: JSON.stringify(parsedData.education || []),
+              cvText: cvText,
+              cvFilename: cvFile.filename,
+              updatedAt: new Date(),
+            },
+          })
+          .returning();
+
+        const profile = result[0];
+        const parsedProfile = {
+          ...profile,
+          skills: JSON.parse(profile.skills),
+          experience: JSON.parse(profile.experience),
+          education: JSON.parse(profile.education),
+        };
+
+        app.logger.info({ userId: session.user.id, profileId: profile.id }, 'Profile saved successfully');
+        return parsedProfile;
+      } catch (dbError) {
+        app.logger.warn({ err: dbError }, 'Failed to save to profile, returning parsed data anyway');
+        return {
+          userId: session.user.id,
+          ...parsedData,
+          cvText,
+          cvFilename: cvFile.filename,
+        };
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      app.logger.error({ err: error, stack: error instanceof Error ? error.stack : undefined }, 'CV parse failed');
-      return reply.status(500).send({
-        error: 'Failed to parse CV',
-        details: errorMsg
-      });
+      const errorStack = error instanceof Error ? error.stack : '';
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to parse CV');
+      return reply.status(500).send({ error: 'Failed to parse CV', details: errorMsg });
     }
   });
 
@@ -948,14 +933,18 @@ Provide 3-5 recommended_pivot_roles and 4-6 upskill_recommendations. Be specific
         bridge_plan: z.string(),
       });
 
-      const { object } = await generateObject({
+      const { output } = await generateText({
         model: gateway('openai/gpt-4o'),
-        schema: longevitySchema,
+        output: Output.object({
+          schema: longevitySchema,
+          name: 'CareerLongevity',
+          description: 'Career longevity and automation risk analysis',
+        }),
         prompt,
       });
 
-      app.logger.info({ userId: session.user.id, longevityScore: object.longevity_score }, 'Career longevity analysis completed');
-      return object;
+      app.logger.info({ userId: session.user.id, longevityScore: output.longevity_score }, 'Career longevity analysis completed');
+      return output;
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to analyze career longevity');
       return reply.status(500).send({ error: 'Failed to analyze career longevity' });
