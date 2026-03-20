@@ -482,39 +482,74 @@ Return ONLY a JSON array of match objects, no other text. Example format:
     app.logger.info({ userId: session.user.id }, 'CV score request received');
 
     try {
-      // Read multipart form data
+      // Read multipart form data and capture first file part
       const parts = request.parts();
       let fileBuffer: Buffer | null = null;
       let filename = '';
+      let foundFile = false;
 
       for await (const part of parts) {
         const partAny = part as any;
-        if (partAny.fieldname === 'cv') {
-          // Try to read the file stream
+        const hasFilename = partAny.filename !== undefined && partAny.filename !== null;
+
+        // Accept first part that has a filename (indicates a file)
+        if (hasFilename && !foundFile) {
+          app.logger.debug({ fieldname: partAny.fieldname, filename: partAny.filename }, 'Capturing file part');
+          foundFile = true;
+
           try {
+            // Consume the file stream into buffer immediately
             const chunks: Buffer[] = [];
-            for await (const chunk of partAny) {
-              chunks.push(chunk);
+
+            // Handle file as async iterable stream
+            if (partAny.file) {
+              // File property contains the stream
+              for await (const chunk of partAny.file) {
+                chunks.push(chunk as Buffer);
+              }
+            } else {
+              // Fallback: try to iterate the part directly
+              for await (const chunk of partAny) {
+                chunks.push(chunk as Buffer);
+              }
             }
+
             if (chunks.length > 0) {
               fileBuffer = Buffer.concat(chunks);
+              filename = partAny.filename || 'cv';
+              app.logger.debug({ filename, bufferSize: fileBuffer.length }, 'File captured successfully');
+            }
+          } catch (readError) {
+            app.logger.warn({ err: readError, fieldname: partAny.fieldname }, 'Failed to read file stream');
+          }
+        } else if (!foundFile) {
+          // Drain non-file field parts to avoid hanging
+          try {
+            if (partAny.file) {
+              for await (const _ of partAny.file) {
+                // Consume the stream
+              }
             }
           } catch {
-            // Fallback: try other methods
-            if (partAny.file) {
-              const chunks: Buffer[] = [];
-              for await (const chunk of partAny.file) {
-                chunks.push(chunk);
+            // Ignore drain errors for non-file parts
+          }
+        }
+
+        // Stop iterating once file is found
+        if (foundFile) {
+          // Drain remaining parts
+          for await (const remainingPart of parts) {
+            const remainingAny = remainingPart as any;
+            try {
+              if (remainingAny.file) {
+                for await (const _ of remainingAny.file) {
+                  // Consume the stream
+                }
               }
-              if (chunks.length > 0) {
-                fileBuffer = Buffer.concat(chunks);
-              }
-            } else if (typeof partAny.toBuffer === 'function') {
-              fileBuffer = await partAny.toBuffer();
+            } catch {
+              // Ignore drain errors
             }
           }
-
-          filename = partAny.filename || 'cv';
           break;
         }
       }
@@ -784,8 +819,7 @@ ${cvText}`;
     try {
       const parts = request.parts();
       let fileBuffer: Buffer | null = null;
-      let filename = 'upload';
-      let mimetype = 'application/octet-stream';
+      let filename = '';
 
       for await (const part of parts) {
         const partAny = part as any;
@@ -799,29 +833,37 @@ ${cvText}`;
           }, 'Processing cv part');
 
           try {
-            // Strategy 1: Try to iterate part directly as stream (Fastify multipart file format)
-            try {
+            // Strategy 1: Try .file property
+            if (partAny.file && !fileBuffer) {
               const chunks: Buffer[] = [];
-              for await (const chunk of partAny) {
-                chunks.push(chunk);
+              try {
+                for await (const chunk of partAny.file) {
+                  chunks.push(chunk as Buffer);
+                }
+                if (chunks.length > 0) {
+                  fileBuffer = Buffer.concat(chunks);
+                  filename = partAny.filename || 'cv';
+                  app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .file property');
+                }
+              } catch (err) {
+                app.logger.debug({ err }, 'Failed to read from .file property');
               }
-              if (chunks.length > 0) {
-                fileBuffer = Buffer.concat(chunks);
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from part stream');
-              }
-            } catch (streamError) {
-              app.logger.debug({ err: streamError }, 'Part stream iteration failed, trying alternatives');
             }
 
-            // Strategy 2: Try .file property if part iteration didn't work
-            if (!fileBuffer && partAny.file) {
+            // Strategy 2: Try iterating part directly
+            if (!fileBuffer) {
               const chunks: Buffer[] = [];
-              for await (const chunk of partAny.file) {
-                chunks.push(chunk);
-              }
-              if (chunks.length > 0) {
-                fileBuffer = Buffer.concat(chunks);
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .file stream');
+              try {
+                for await (const chunk of partAny) {
+                  chunks.push(chunk as Buffer);
+                }
+                if (chunks.length > 0) {
+                  fileBuffer = Buffer.concat(chunks);
+                  filename = partAny.filename || 'cv';
+                  app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from part iteration');
+                }
+              } catch (err) {
+                app.logger.debug({ err }, 'Failed to iterate part directly');
               }
             }
 
@@ -829,29 +871,28 @@ ${cvText}`;
             if (!fileBuffer && typeof partAny.toBuffer === 'function') {
               try {
                 fileBuffer = await partAny.toBuffer();
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file using toBuffer');
-              } catch (toBufferError) {
-                app.logger.debug({ err: toBufferError }, 'toBuffer() failed');
+                filename = partAny.filename || 'cv';
+                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file using toBuffer()');
+              } catch (err) {
+                app.logger.debug({ err }, 'toBuffer() failed');
               }
             }
 
-            // Strategy 4: Try to use .value as fallback (could be string or buffer)
+            // Strategy 4: Try .value property as fallback
             if (!fileBuffer && partAny.value !== undefined) {
-              if (Buffer.isBuffer(partAny.value)) {
-                fileBuffer = partAny.value;
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .value (Buffer)');
-              } else if (typeof partAny.value === 'string' && partAny.value.length > 0) {
-                fileBuffer = Buffer.from(partAny.value, 'utf-8');
-                app.logger.debug({ bufferSize: fileBuffer.length, preview: partAny.value.substring(0, 50) }, 'Read file from .value (string)');
+              try {
+                if (Buffer.isBuffer(partAny.value)) {
+                  fileBuffer = partAny.value;
+                  filename = partAny.filename || 'cv';
+                  app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .value (Buffer)');
+                } else if (typeof partAny.value === 'string' && partAny.value.length > 0) {
+                  fileBuffer = Buffer.from(partAny.value, 'utf-8');
+                  filename = partAny.filename || 'cv';
+                  app.logger.debug({ bufferSize: fileBuffer.length, preview: partAny.value.substring(0, 50) }, 'Read file from .value (string)');
+                }
+              } catch (err) {
+                app.logger.debug({ err }, '.value extraction failed');
               }
-            }
-
-            // Set filename and mimetype from part if available
-            if (partAny.filename) {
-              filename = partAny.filename;
-            }
-            if (partAny.mimetype) {
-              mimetype = partAny.mimetype;
             }
           } catch (e) {
             app.logger.warn({ err: e }, 'Error reading cv part');
