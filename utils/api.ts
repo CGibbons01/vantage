@@ -31,6 +31,8 @@ export const apiCall = async <T = any>(
   }
 
   const url = `${BACKEND_URL}${endpoint}`;
+  const method = options?.method || "GET";
+  console.log(`[API] ${method} ${url}`);
 
   const fetchOptions: RequestInit = {
     ...options,
@@ -48,10 +50,19 @@ export const apiCall = async <T = any>(
     };
   }
 
-  const response = await fetch(url, fetchOptions);
+  let response: Response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch (networkError) {
+    console.error(`[API] Network error for ${method} ${url}:`, networkError);
+    throw networkError;
+  }
+
+  console.log(`[API] ${method} ${url} → ${response.status}`);
 
   if (!response.ok) {
     const text = await response.text();
+    console.error(`[API] Error response for ${method} ${url}:`, response.status, text);
     throw new Error(`API error: ${response.status} - ${text}`);
   }
 
@@ -97,7 +108,8 @@ export const authenticatedApiCall = async <T = any>(
   const token = await getBearerToken();
 
   if (!token) {
-    throw new Error("Authentication token not found. Please sign in.");
+    console.warn("[API] No auth token found — making unauthenticated request to", endpoint);
+    return apiCall<T>(endpoint, options);
   }
 
   return apiCall<T>(endpoint, {
