@@ -432,9 +432,10 @@ describe("API Integration Tests", () => {
     });
     await expectStatus(res, 200);
     const data = await res.json();
-    expect(data.overall_score).toBeDefined();
-    expect(data.industry_fit).toBeDefined();
-    expect(data.improvement_tips).toBeDefined();
+    expect(data.score).toBeDefined();
+    expect(data.summary).toBeDefined();
+    expect(data.strengths).toBeDefined();
+    expect(data.improvements).toBeDefined();
   });
 
   test("Score CV - missing required field", async () => {
@@ -724,7 +725,7 @@ describe("API Integration Tests", () => {
         mime_type: "application/pdf",
       }),
     });
-    await expectStatus(res, 200);
+    await expectStatus(res, 401);
   });
 
   test("Generate CV without auth", async () => {
