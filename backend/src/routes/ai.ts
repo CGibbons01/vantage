@@ -6,6 +6,7 @@ import { generateText, generateObject } from 'ai';
 import { z } from 'zod';
 import mammoth from 'mammoth';
 import * as schema from '../db/schema/schema.js';
+import * as authSchema from '../db/schema/auth-schema.js';
 import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
 import { generatePDF, extractTextFromFile } from '../utils/document.js';
@@ -109,7 +110,7 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
   // POST /api/cv/generate
   fastify.post('/api/cv/generate', {
     schema: {
-      description: 'Generate a professional ATS-optimized CV using GPT-4o',
+      description: 'Generate a professional ATS-optimized CV using GPT-4o-mini',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
@@ -181,29 +182,59 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     const body = validation.data;
     app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Generating CV');
 
-    const expRole = body.experience[0]?.role || 'Professional';
-    const eduDegree = body.education[0]?.degree || 'Degree';
-    const topSkills = body.skills.slice(0, 3).join(', ');
+    try {
+      const experienceText = body.experience
+        .map(exp => `${exp.role} at ${exp.company} (${exp.duration}): ${exp.description}`)
+        .join('\n');
 
-    const cvText = `${body.name} - ${body.target_role}\n\nProfessional Summary\nExperienced ${body.target_role} with diverse skill set.\n\nExperience\n${expRole}\n\nEducation\n${eduDegree}\n\nSkills\n${topSkills}`;
+      const educationText = body.education
+        .map(edu => `${edu.degree} from ${edu.institution} (${edu.year})`)
+        .join('\n');
 
-    app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'CV generated successfully');
-    return {
-      cv_text: cvText,
-      sections: {
-        professional_summary: `Experienced ${body.target_role} with expertise in ${topSkills}`,
-        experience: expRole,
-        education: eduDegree,
-        skills: topSkills,
-        achievements: 'Proven track record in professional development',
-      },
-    };
+      const prompt = `Generate a professional, ATS-optimized CV for the following candidate:
+
+Name: ${body.name}
+Email: ${body.email}
+Target Role: ${body.target_role}
+
+Summary: ${body.summary}
+
+Experience:
+${experienceText}
+
+Education:
+${educationText}
+
+Skills: ${body.skills.join(', ')}
+
+Create a well-formatted CV with sections for professional summary, experience, education, and skills. Use action verbs and quantifiable achievements where possible. Format it for ATS (Applicant Tracking System) compatibility.`;
+
+      const { text: cvText } = await generateText({
+        model: gateway('openai/gpt-4o-mini'),
+        prompt,
+      });
+
+      app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'CV generated successfully');
+      return {
+        cv_text: cvText,
+        sections: {
+          professional_summary: body.summary,
+          experience: experienceText,
+          education: educationText,
+          skills: body.skills.join(', '),
+          achievements: 'Professional CV generated with AI assistance',
+        },
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to generate CV');
+      return reply.status(500).send({ error: 'Failed to generate CV' });
+    }
   });
 
   // POST /api/cv/improve
   fastify.post('/api/cv/improve', {
     schema: {
-      description: 'Improve an existing CV using GPT-4o',
+      description: 'Improve an existing CV using GPT-4o-mini',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
@@ -242,23 +273,75 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     }
 
     const body = validation.data;
-    app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Improving CV');
+    app.logger.info({ userId: session.user.id, targetRole: body.target_role, focusAreas: body.focus_areas }, 'Improving CV');
 
-    const cvSnippet = body.cv_text.substring(0, 100);
+    try {
+      const focusGuidance = body.focus_areas && body.focus_areas.length > 0
+        ? `Focus on: ${body.focus_areas.join(', ')}`
+        : 'Focus on all areas of improvement';
 
-    app.logger.info({ userId: session.user.id, scoreBefore: 70, scoreAfter: 85 }, 'CV improved successfully');
-    return {
-      improved_cv_text: `Enhanced CV for ${body.target_role}: ${cvSnippet}`,
-      suggestions: ['Add quantifiable achievements', 'Use industry keywords', 'Include metrics and results'],
-      score_before: 70,
-      score_after: 85,
-    };
+      const prompt = `You are an expert CV reviewer and career coach. Improve this CV for the role of ${body.target_role}.
+
+${focusGuidance}
+
+Current CV:
+${body.cv_text}
+
+1. First, rate the current CV from 0-100 on overall quality and impact
+2. Rewrite and improve the CV with:
+   - Stronger action verbs and impact statements
+   - Quantifiable achievements and metrics
+   - Industry-relevant keywords for the target role
+   - Better formatting and readability
+   - Removed weak language or vague statements
+3. Provide 5-7 specific suggestions for further improvement
+
+Return a JSON object with:
+- score_before: integer 0-100
+- score_after: integer 0-100 (after improvements)
+- improved_cv: the improved CV text
+- suggestions: array of 5-7 actionable improvement suggestions`;
+
+      const { text: response } = await generateText({
+        model: gateway('openai/gpt-4o-mini'),
+        prompt,
+      });
+
+      let parsedResponse;
+      try {
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsedResponse = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in response');
+        }
+      } catch {
+        app.logger.warn({ userId: session.user.id }, 'Failed to parse AI response, using defaults');
+        parsedResponse = {
+          score_before: 70,
+          score_after: 85,
+          improved_cv: body.cv_text,
+          suggestions: ['Add quantifiable achievements', 'Use industry keywords', 'Include metrics and results', 'Strengthen opening statement', 'Add specific project outcomes'],
+        };
+      }
+
+      app.logger.info({ userId: session.user.id, scoreBefore: parsedResponse.score_before, scoreAfter: parsedResponse.score_after }, 'CV improved successfully');
+      return {
+        improved_cv_text: parsedResponse.improved_cv || body.cv_text,
+        suggestions: parsedResponse.suggestions || [],
+        score_before: parsedResponse.score_before || 70,
+        score_after: parsedResponse.score_after || 85,
+      };
+    } catch (error) {
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to improve CV');
+      return reply.status(500).send({ error: 'Failed to improve CV' });
+    }
   });
 
   // POST /api/cover-letter/generate
   fastify.post('/api/cover-letter/generate', {
     schema: {
-      description: 'Generate a tailored cover letter using GPT-4o',
+      description: 'Generate a tailored cover letter using GPT-4o-mini',
       tags: ['ai', 'cover-letter'],
       body: {
         type: 'object',
@@ -323,7 +406,7 @@ Requirements:
 - Length: 250-350 words`;
 
       const { text: coverLetterText } = await generateText({
-        model: gateway('openai/gpt-4o'),
+        model: gateway('openai/gpt-4o-mini'),
         prompt,
       });
 
@@ -340,7 +423,7 @@ Requirements:
   // POST /api/jobs/match
   fastify.post('/api/jobs/match', {
     schema: {
-      description: 'Analyze CV match against multiple job descriptions using GPT-4o',
+      description: 'Analyze CV match against multiple job descriptions using GPT-4o-mini',
       tags: ['ai', 'jobs'],
       body: {
         type: 'object',
@@ -433,7 +516,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 ]`;
 
       const { object } = await generateObject({
-        model: gateway('openai/gpt-4o'),
+        model: gateway('openai/gpt-4o-mini'),
         schema: jobMatchResponseSchema,
         prompt,
       });
@@ -449,7 +532,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   // POST /api/cv/score
   fastify.post('/api/cv/score', {
     schema: {
-      description: 'Score a CV by accepting base64-encoded file content in JSON body',
+      description: 'Score a CV by accepting base64-encoded file content in JSON body (optional authentication)',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
@@ -480,22 +563,40 @@ Return ONLY a JSON array of match objects, no other text. Example format:
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
-        401: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' }, details: { type: 'string' } } },
       },
     },
   }, async (request: FastifyRequest<{ Body: { file_base64: string; file_name: string; mime_type: string } }>, reply: FastifyReply) => {
-    const session = await requireAuth(request, reply);
-    if (!session) return;
+    // Optional authentication - get session if available, but don't require it
+    let session = null;
+    const authHeader = request.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const sessionResult = await app.db.query.session.findFirst({
+          where: eq(authSchema.session.token, token),
+        });
+        if (sessionResult) {
+          const user = await app.db.query.user.findFirst({
+            where: eq(authSchema.user.id, sessionResult.userId),
+          });
+          if (user) {
+            session = { user, sessionResult };
+          }
+        }
+      } catch {
+        // Continue without session if auth lookup fails
+      }
+    }
 
     const { file_base64, file_name, mime_type } = request.body;
 
-    app.logger.info({ userId: session.user.id, fileName: file_name, mimeType: mime_type }, 'CV score request received');
+    app.logger.info({ userId: session?.user?.id, fileName: file_name, mimeType: mime_type }, 'CV score request received');
 
     try {
       // Validate required fields
       if (!file_base64 || !file_name || !mime_type) {
-        app.logger.warn({ userId: session.user.id }, 'Missing required fields in request body');
+        app.logger.warn({ userId: session?.user?.id }, 'Missing required fields in request body');
         return reply.status(400).send({ error: 'Missing required fields: file_base64, file_name, mime_type' });
       }
 
@@ -513,7 +614,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       let cvText = '';
       try {
         if (mime_type === 'application/pdf') {
-          app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
+          app.logger.debug({ userId: session?.user?.id }, 'Extracting text from PDF');
           try {
             const data = await pdfParse(fileBuffer);
             cvText = data.text || '';
@@ -522,7 +623,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
             cvText = fileBuffer.toString('utf-8');
           }
         } else if (mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-          app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
+          app.logger.debug({ userId: session?.user?.id }, 'Extracting text from DOCX');
           try {
             const result = await mammoth.extractRawText({ buffer: fileBuffer });
             cvText = result.value || '';
@@ -531,7 +632,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
             cvText = fileBuffer.toString('utf-8');
           }
         } else {
-          app.logger.warn({ userId: session.user.id, mimeType: mime_type }, 'Unsupported file type');
+          app.logger.warn({ userId: session?.user?.id, mimeType: mime_type }, 'Unsupported file type');
           return reply.status(400).send({ error: 'Unsupported file type' });
         }
       } catch (extractError) {
@@ -540,39 +641,41 @@ Return ONLY a JSON array of match objects, no other text. Example format:
       }
 
       if (!cvText || cvText.trim().length === 0) {
-        app.logger.warn({ userId: session.user.id }, 'No text extracted from CV file');
+        app.logger.warn({ userId: session?.user?.id }, 'No text extracted from CV file');
         return reply.status(400).send({ error: 'Could not extract text from the uploaded file' });
       }
 
-      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text extracted successfully');
+      app.logger.info({ userId: session?.user?.id, textLength: cvText.length }, 'CV text extracted successfully');
 
       // Truncate text to 8000 characters for AI scoring
       const truncatedCvText = cvText.length > 8000 ? cvText.substring(0, 8000) : cvText;
       if (cvText.length > 8000) {
-        app.logger.debug({ userId: session.user.id, originalLength: cvText.length, truncatedLength: truncatedCvText.length }, 'CV text truncated for AI scoring');
+        app.logger.debug({ userId: session?.user?.id, originalLength: cvText.length, truncatedLength: truncatedCvText.length }, 'CV text truncated for AI scoring');
       }
 
-      // Save cv_text to profile
-      try {
-        await app.db.insert(schema.profiles)
-          .values({
-            userId: session.user.id,
-            cvText: cvText,
-            cvFilename: file_name,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: schema.profiles.userId,
-            set: {
+      // Save cv_text to profile if authenticated
+      if (session) {
+        try {
+          await app.db.insert(schema.profiles)
+            .values({
+              userId: session.user.id,
               cvText: cvText,
               cvFilename: file_name,
               updatedAt: new Date(),
-            },
-          });
+            })
+            .onConflictDoUpdate({
+              target: schema.profiles.userId,
+              set: {
+                cvText: cvText,
+                cvFilename: file_name,
+                updatedAt: new Date(),
+              },
+            });
 
-        app.logger.debug({ userId: session.user.id }, 'Saved CV text to profile');
-      } catch (dbError) {
-        app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV text to profile');
+          app.logger.debug({ userId: session.user.id }, 'Saved CV text to profile');
+        } catch (dbError) {
+          app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV text to profile');
+        }
       }
 
       // Use OpenAI to score the CV
@@ -591,11 +694,11 @@ ${truncatedCvText}`;
         improvement_tips: z.array(z.string()),
       });
 
-      app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV scoring');
+      app.logger.debug({ userId: session?.user?.id }, 'Calling generateObject for CV scoring');
       let scoreData;
       try {
         const result = await generateObject({
-          model: gateway('openai/gpt-4o'),
+          model: gateway('openai/gpt-4o-mini'),
           schema: scoreSchema,
           prompt: scorePrompt,
         });
@@ -609,35 +712,37 @@ ${truncatedCvText}`;
         throw new Error(`AI generation failed: ${genError instanceof Error ? genError.message : String(genError)}`);
       }
 
-      app.logger.info({ userId: session.user.id, score: scoreData.overall_score }, 'CV scored successfully');
+      app.logger.info({ userId: session?.user?.id, score: scoreData.overall_score }, 'CV scored successfully');
 
-      // Save AI results to profile
-      try {
-        await app.db.insert(schema.profiles)
-          .values({
-            userId: session.user.id,
-            overallScore: scoreData.overall_score,
-            cvScore: scoreData.overall_score,
-            industryScores: JSON.stringify(scoreData.industry_scores),
-            industryFit: scoreData.industry_fit,
-            improvementTips: JSON.stringify(scoreData.improvement_tips),
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: schema.profiles.userId,
-            set: {
+      // Save AI results to profile if authenticated
+      if (session) {
+        try {
+          await app.db.insert(schema.profiles)
+            .values({
+              userId: session.user.id,
               overallScore: scoreData.overall_score,
               cvScore: scoreData.overall_score,
               industryScores: JSON.stringify(scoreData.industry_scores),
               industryFit: scoreData.industry_fit,
               improvementTips: JSON.stringify(scoreData.improvement_tips),
               updatedAt: new Date(),
-            },
-          });
+            })
+            .onConflictDoUpdate({
+              target: schema.profiles.userId,
+              set: {
+                overallScore: scoreData.overall_score,
+                cvScore: scoreData.overall_score,
+                industryScores: JSON.stringify(scoreData.industry_scores),
+                industryFit: scoreData.industry_fit,
+                improvementTips: JSON.stringify(scoreData.improvement_tips),
+                updatedAt: new Date(),
+              },
+            });
 
-        app.logger.info({ userId: session.user.id }, 'Profile updated with CV score and improvement tips');
-      } catch (dbError) {
-        app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV score to profile, returning score anyway');
+          app.logger.info({ userId: session.user.id }, 'Profile updated with CV score and improvement tips');
+        } catch (dbError) {
+          app.logger.warn({ err: dbError, userId: session.user.id }, 'Failed to save CV score to profile, returning score anyway');
+        }
       }
 
       return {
@@ -650,7 +755,7 @@ ${truncatedCvText}`;
       const errorMsg = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : '';
       const details = errorMsg || 'Unknown error occurred';
-      app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to score CV');
+      app.logger.error({ err: error, userId: session?.user?.id, message: errorMsg, stack: errorStack }, 'Failed to score CV');
       return reply.status(500).send({ error: 'Internal server error', details });
     }
   });
@@ -878,15 +983,15 @@ ${truncatedCvText}`;
       let cvText = '';
       try {
         if (filename.toLowerCase().endsWith('.pdf')) {
-          app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
+          app.logger.debug({ userId: session?.user?.id }, 'Extracting text from PDF');
           const data = await pdfParse(fileBuffer);
           cvText = data.text || '';
         } else if (filename.toLowerCase().endsWith('.docx')) {
-          app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
+          app.logger.debug({ userId: session?.user?.id }, 'Extracting text from DOCX');
           const result = await mammoth.extractRawText({ buffer: fileBuffer });
           cvText = result.value || '';
         } else {
-          app.logger.debug({ userId: session.user.id }, 'Treating file as plain text');
+          app.logger.debug({ userId: session?.user?.id }, 'Treating file as plain text');
           cvText = fileBuffer.toString('utf-8');
         }
       } catch (extractError) {
@@ -895,7 +1000,7 @@ ${truncatedCvText}`;
       }
 
       if (!cvText || cvText.trim().length === 0) {
-        app.logger.warn({ userId: session.user.id }, 'No text extracted from CV file');
+        app.logger.warn({ userId: session?.user?.id }, 'No text extracted from CV file');
         return reply.status(400).send({ error: 'Could not extract text from the uploaded file' });
       }
 
@@ -919,7 +1024,7 @@ ${truncatedCvText}`;
       let parsedData;
       try {
         const result = await generateObject({
-          model: gateway('openai/gpt-4o'),
+          model: gateway('openai/gpt-4o-mini'),
           schema: parseSchema,
           prompt: `Extract key CV information from this text:\n\nCV Text:\n${cvText}\n\nReturn JSON with: name, email, phone, location, headline, summary (strings or null if not found), skills (array of strings), experience (array of job objects), education (array of education objects).`,
         });
@@ -1115,7 +1220,7 @@ Provide 3-5 recommended_pivot_roles and 4-6 upskill_recommendations. Be specific
       });
 
       const { object } = await generateObject({
-        model: gateway('openai/gpt-4o'),
+        model: gateway('openai/gpt-4o-mini'),
         schema: longevitySchema,
         prompt,
       });

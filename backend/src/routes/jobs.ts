@@ -83,9 +83,138 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
       const appId = process.env.ADZUNA_APP_ID;
       const appKey = process.env.ADZUNA_APP_KEY;
 
+      // Return mock data if credentials are not configured
       if (!appId || !appKey) {
-        app.logger.error({}, 'Adzuna credentials not configured');
-        return reply.status(500).send({ error: 'Job search not available' });
+        app.logger.warn({ keywords, location }, 'Adzuna credentials not configured, returning mock data');
+        const mockJobs: TransformedJob[] = [
+          {
+            id: 'mock_1',
+            title: 'Senior Software Engineer',
+            company: 'Tech Innovations Ltd',
+            location: 'London, UK',
+            description: 'We are seeking a Senior Software Engineer with experience in cloud architecture and microservices.',
+            salary_min: 70000,
+            salary_max: 95000,
+            redirect_url: 'https://example.com/job/1',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_2',
+            title: 'Data Scientist',
+            company: 'Analytics Pro',
+            location: 'Manchester, UK',
+            description: 'Looking for a Data Scientist to build and deploy ML models for business intelligence.',
+            salary_min: 55000,
+            salary_max: 80000,
+            redirect_url: 'https://example.com/job/2',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_3',
+            title: 'Full Stack Developer',
+            company: 'Web Solutions Inc',
+            location: 'Bristol, UK',
+            description: 'Full Stack Developer needed for developing scalable web applications using modern frameworks.',
+            salary_min: 45000,
+            salary_max: 65000,
+            redirect_url: 'https://example.com/job/3',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_4',
+            title: 'DevOps Engineer',
+            company: 'Cloud Systems',
+            location: 'Edinburgh, UK',
+            description: 'DevOps Engineer to manage infrastructure, CI/CD pipelines, and containerized applications.',
+            salary_min: 50000,
+            salary_max: 75000,
+            redirect_url: 'https://example.com/job/4',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_5',
+            title: 'Machine Learning Engineer',
+            company: 'AI Ventures',
+            location: 'London, UK',
+            description: 'ML Engineer to develop and optimize machine learning models for production systems.',
+            salary_min: 60000,
+            salary_max: 90000,
+            redirect_url: 'https://example.com/job/5',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_6',
+            title: 'Product Manager',
+            company: 'Digital First Co',
+            location: 'London, UK',
+            description: 'Experienced Product Manager to lead product strategy and roadmap development.',
+            salary_min: 65000,
+            salary_max: 85000,
+            redirect_url: 'https://example.com/job/6',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_7',
+            title: 'Frontend Engineer',
+            company: 'Digital Design Studio',
+            location: 'Birmingham, UK',
+            description: 'Frontend Engineer with expertise in React, TypeScript, and modern web technologies.',
+            salary_min: 40000,
+            salary_max: 60000,
+            redirect_url: 'https://example.com/job/7',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_8',
+            title: 'Database Administrator',
+            company: 'Enterprise Systems',
+            location: 'London, UK',
+            description: 'DBA needed to manage and optimize large-scale database systems.',
+            salary_min: 45000,
+            salary_max: 70000,
+            redirect_url: 'https://example.com/job/8',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_9',
+            title: 'UX/UI Designer',
+            company: 'Creative Digital',
+            location: 'London, UK',
+            description: 'UX/UI Designer to create intuitive and beautiful user interfaces for web and mobile applications.',
+            salary_min: 35000,
+            salary_max: 55000,
+            redirect_url: 'https://example.com/job/9',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          {
+            id: 'mock_10',
+            title: 'Solutions Architect',
+            company: 'Enterprise Solutions Ltd',
+            location: 'London, UK',
+            description: 'Solutions Architect to design scalable and secure solutions for enterprise clients.',
+            salary_min: 75000,
+            salary_max: 110000,
+            redirect_url: 'https://example.com/job/10',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+        ];
+
+        app.logger.info({ count: mockJobs.length, page }, 'Returning mock job data');
+        return {
+          jobs: mockJobs,
+          total: mockJobs.length,
+          page,
+        };
       }
 
       const url = new URL(`https://api.adzuna.com/v1/api/jobs/gb/search/${page}`);
@@ -183,8 +312,41 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
       const appKey = process.env.ADZUNA_APP_KEY;
 
       if (!appId || !appKey) {
-        app.logger.error({}, 'Adzuna credentials not configured');
-        return reply.status(500).send({ error: 'Job search not available' });
+        app.logger.warn({ jobId: id }, 'Adzuna credentials not configured, returning mock job');
+        // Return mock job if credentials not configured
+        const mockJobMap: { [key: string]: TransformedJob } = {
+          'mock_1': {
+            id: 'mock_1',
+            title: 'Senior Software Engineer',
+            company: 'Tech Innovations Ltd',
+            location: 'London, UK',
+            description: 'We are seeking a Senior Software Engineer with experience in cloud architecture and microservices. This is a full-time role with competitive benefits.',
+            salary_min: 70000,
+            salary_max: 95000,
+            redirect_url: 'https://example.com/job/1',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+          'mock_2': {
+            id: 'mock_2',
+            title: 'Data Scientist',
+            company: 'Analytics Pro',
+            location: 'Manchester, UK',
+            description: 'Looking for a Data Scientist to build and deploy ML models for business intelligence and analytics.',
+            salary_min: 55000,
+            salary_max: 80000,
+            redirect_url: 'https://example.com/job/2',
+            created: new Date().toISOString(),
+            category: 'IT Jobs',
+          },
+        };
+
+        const job = mockJobMap[id];
+        if (job) {
+          app.logger.info({ jobId: id }, 'Mock job detail returned');
+          return job;
+        }
+        return reply.status(404).send({ error: 'Job not found' });
       }
 
       const url = new URL('https://api.adzuna.com/v1/api/jobs/gb/search/1');

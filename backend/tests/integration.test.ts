@@ -724,7 +724,7 @@ describe("API Integration Tests", () => {
         mime_type: "application/pdf",
       }),
     });
-    await expectStatus(res, 401);
+    await expectStatus(res, 200);
   });
 
   test("Generate CV without auth", async () => {

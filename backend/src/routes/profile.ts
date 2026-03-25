@@ -70,7 +70,10 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
             experience: { type: 'array' },
             education: { type: 'array' },
             cvScore: { type: 'number' },
-            industryFit: { type: 'object' },
+            industryFit: { type: 'string' },
+            industryScores: { type: 'array' },
+            overallScore: { type: 'number' },
+            improvementTips: { type: 'array' },
             cvText: { type: 'string' },
             cvFilename: { type: 'string' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -91,7 +94,7 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
       });
 
       if (!profile) {
-        app.logger.info({ userId: session.user.id }, 'Creating new profile');
+        app.logger.info({ userId: session.user.id }, 'Creating new default profile');
         const newProfile = {
           userId: session.user.id,
           headline: '',
@@ -106,6 +109,9 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
           industryFit: null,
           cvText: null,
           cvFilename: null,
+          industryScores: null,
+          overallScore: null,
+          improvementTips: null,
           updatedAt: new Date(),
         };
         const inserted = await app.db.insert(schema.profiles).values(newProfile).returning();
@@ -114,10 +120,11 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
 
       const parsedProfile = {
         ...profile,
-        skills: JSON.parse(profile.skills),
-        experience: JSON.parse(profile.experience),
-        education: JSON.parse(profile.education),
-        industryFit: profile.industryFit ? JSON.parse(profile.industryFit) : null,
+        skills: profile.skills ? JSON.parse(profile.skills) : [],
+        experience: profile.experience ? JSON.parse(profile.experience) : [],
+        education: profile.education ? JSON.parse(profile.education) : [],
+        industryScores: profile.industryScores ? JSON.parse(profile.industryScores) : [],
+        improvementTips: profile.improvementTips ? JSON.parse(profile.improvementTips) : [],
       };
 
       app.logger.info({ profileId: profile.id }, 'Profile fetched successfully');
@@ -161,7 +168,10 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
             experience: { type: 'array' },
             education: { type: 'array' },
             cvScore: { type: 'number' },
-            industryFit: { type: 'object' },
+            industryFit: { type: 'string' },
+            industryScores: { type: 'array' },
+            overallScore: { type: 'number' },
+            improvementTips: { type: 'array' },
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
@@ -214,10 +224,11 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
       const profile = result[0];
       const parsedProfile = {
         ...profile,
-        skills: JSON.parse(profile.skills),
-        experience: JSON.parse(profile.experience),
-        education: JSON.parse(profile.education),
-        industryFit: profile.industryFit ? JSON.parse(profile.industryFit) : null,
+        skills: profile.skills ? JSON.parse(profile.skills) : [],
+        experience: profile.experience ? JSON.parse(profile.experience) : [],
+        education: profile.education ? JSON.parse(profile.education) : [],
+        industryScores: profile.industryScores ? JSON.parse(profile.industryScores) : [],
+        improvementTips: profile.improvementTips ? JSON.parse(profile.improvementTips) : [],
       };
 
       app.logger.info({ profileId: profile.id }, 'Profile updated successfully');
@@ -248,7 +259,10 @@ export function registerProfileRoutes(app: App, fastify: FastifyInstance) {
             experience: { type: 'array' },
             education: { type: 'array' },
             cvScore: { type: 'number' },
-            industryFit: { type: 'object' },
+            industryFit: { type: 'string' },
+            industryScores: { type: 'array' },
+            overallScore: { type: 'number' },
+            improvementTips: { type: 'array' },
             cvText: { type: 'string' },
             cvFilename: { type: 'string' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -387,10 +401,11 @@ Required fields: name, headline, summary, skills (array), experience (array with
       const profile = result[0];
       const parsedProfile = {
         ...profile,
-        skills: JSON.parse(profile.skills),
-        experience: JSON.parse(profile.experience),
-        education: JSON.parse(profile.education),
-        industryFit: profile.industryFit ? JSON.parse(profile.industryFit) : null,
+        skills: profile.skills ? JSON.parse(profile.skills) : [],
+        experience: profile.experience ? JSON.parse(profile.experience) : [],
+        education: profile.education ? JSON.parse(profile.education) : [],
+        industryScores: profile.industryScores ? JSON.parse(profile.industryScores) : [],
+        improvementTips: profile.improvementTips ? JSON.parse(profile.improvementTips) : [],
       };
 
       app.logger.info({ profileId: profile.id, cvScore: profile.cvScore }, 'CV analyzed and profile updated successfully');
