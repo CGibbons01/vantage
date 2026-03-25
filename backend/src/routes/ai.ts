@@ -1,52 +1,15 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { createRequire } from 'module';
-import { eq } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
 import { generateText, generateObject } from 'ai';
 import { z } from 'zod';
 import mammoth from 'mammoth';
 import * as schema from '../db/schema/schema.js';
-import * as authSchema from '../db/schema/auth-schema.js';
 import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
-import { generatePDF, extractTextFromFile } from '../utils/document.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
-
-const cvGenerateBodySchema = z.object({
-  name: z.string(),
-  email: z.string().email(),
-  target_role: z.string(),
-  experience: z.array(z.object({
-    company: z.string(),
-    role: z.string(),
-    duration: z.string(),
-    description: z.string(),
-  })),
-  education: z.array(z.object({
-    institution: z.string(),
-    degree: z.string(),
-    year: z.string(),
-  })),
-  skills: z.array(z.string()),
-  summary: z.string(),
-});
-
-const cvImproveBodySchema = z.object({
-  cv_text: z.string(),
-  target_role: z.string(),
-  focus_areas: z.array(z.enum(['impact_statements', 'keywords', 'formatting', 'achievements', 'summary'])).optional(),
-});
-
-const coverLetterBodySchema = z.object({
-  applicant_name: z.string(),
-  job_title: z.string(),
-  company_name: z.string(),
-  job_description: z.string(),
-  cv_summary: z.string(),
-  tone: z.enum(['professional', 'enthusiastic', 'concise']).optional().default('professional'),
-});
 
 const jobMatchBodySchema = z.object({
   cv_text: z.string(),
@@ -59,24 +22,6 @@ const jobMatchBodySchema = z.object({
   })),
 });
 
-const cvGenerateResponseSchema = z.object({
-  cv_text: z.string(),
-  sections: z.object({
-    professional_summary: z.string(),
-    experience: z.string(),
-    education: z.string(),
-    skills: z.string(),
-    achievements: z.string(),
-  }),
-});
-
-const cvImproveResponseSchema = z.object({
-  improved_cv_text: z.string(),
-  suggestions: z.array(z.string()),
-  score_before: z.number().int().min(0).max(100),
-  score_after: z.number().int().min(0).max(100),
-});
-
 const jobMatchResponseSchema = z.object({
   matches: z.array(z.object({
     job_id: z.string(),
@@ -87,65 +32,22 @@ const jobMatchResponseSchema = z.object({
   })),
 });
 
-const cvScoreResponseSchema = z.object({
-  score: z.number().int().min(0).max(100),
-  industry_fit: z.string(),
-  skills: z.array(z.string()),
-  summary: z.string(),
-  strengths: z.array(z.string()),
-  weaknesses: z.array(z.string()),
-  improvements: z.array(z.string()),
-  section_scores: z.object({
-    summary: z.number().int().min(0).max(100),
-    experience: z.number().int().min(0).max(100),
-    education: z.number().int().min(0).max(100),
-    skills: z.number().int().min(0).max(100),
-    formatting: z.number().int().min(0).max(100),
-  }),
-});
-
 export function registerAIRoutes(app: App, fastify: FastifyInstance) {
   const requireAuth = createBearerAuth(app);
 
   // POST /api/cv/generate
   fastify.post('/api/cv/generate', {
     schema: {
-      description: 'Generate a professional ATS-optimized CV using GPT-4o-mini',
+      description: 'Generate a professional CV based on basic details',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
-        required: ['name', 'email', 'target_role', 'experience', 'education', 'skills', 'summary'],
         properties: {
-          name: { type: 'string' },
-          email: { type: 'string', format: 'email' },
-          target_role: { type: 'string' },
-          experience: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                company: { type: 'string' },
-                role: { type: 'string' },
-                duration: { type: 'string' },
-                description: { type: 'string' },
-              },
-              required: ['company', 'role', 'duration', 'description'],
-            },
-          },
-          education: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                institution: { type: 'string' },
-                degree: { type: 'string' },
-                year: { type: 'string' },
-              },
-              required: ['institution', 'degree', 'year'],
-            },
-          },
+          job_title: { type: 'string' },
+          industry: { type: 'string' },
+          years_experience: { type: 'number' },
           skills: { type: 'array', items: { type: 'string' } },
-          summary: { type: 'string' },
+          tone: { type: 'string', enum: ['professional', 'creative', 'academic'] },
         },
       },
       response: {
@@ -153,16 +55,6 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
           type: 'object',
           properties: {
             cv_text: { type: 'string' },
-            sections: {
-              type: 'object',
-              properties: {
-                professional_summary: { type: 'string' },
-                experience: { type: 'string' },
-                education: { type: 'string' },
-                skills: { type: 'string' },
-                achievements: { type: 'string' },
-              },
-            },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -170,60 +62,43 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { job_title?: string; industry?: string; years_experience?: number; skills?: string[]; tone?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const validation = cvGenerateBodySchema.safeParse(request.body);
-    if (!validation.success) {
-      return reply.status(400).send({ error: 'Invalid request body' });
-    }
+    const { job_title, industry, years_experience, skills, tone = 'professional' } = request.body;
 
-    const body = validation.data;
-    app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'Generating CV');
+    app.logger.info({ userId: session.user.id, jobTitle: job_title }, 'Generating CV');
 
     try {
-      const experienceText = body.experience
-        .map(exp => `${exp.role} at ${exp.company} (${exp.duration}): ${exp.description}`)
-        .join('\n');
+      const skillsText = skills && skills.length > 0 ? skills.join(', ') : 'Not specified';
+      const experienceText = years_experience ? `${years_experience} years of experience` : 'Experience level not specified';
+      const industryText = industry ? `in the ${industry} industry` : '';
 
-      const educationText = body.education
-        .map(edu => `${edu.degree} from ${edu.institution} (${edu.year})`)
-        .join('\n');
+      const toneDescriptions = {
+        professional: 'formal and professional tone',
+        creative: 'creative and engaging tone',
+        academic: 'academic and detailed tone',
+      };
 
-      const prompt = `Generate a professional, ATS-optimized CV for the following candidate:
+      const prompt = `Generate a professional CV in plain text format for a candidate with the following profile:
 
-Name: ${body.name}
-Email: ${body.email}
-Target Role: ${body.target_role}
+Job Title/Target Role: ${job_title || 'Not specified'}
+Industry: ${industry || 'Not specified'}
+Experience: ${experienceText}
+Key Skills: ${skillsText}
+Tone: ${toneDescriptions[tone as keyof typeof toneDescriptions] || 'professional'}
 
-Summary: ${body.summary}
-
-Experience:
-${experienceText}
-
-Education:
-${educationText}
-
-Skills: ${body.skills.join(', ')}
-
-Create a well-formatted CV with sections for professional summary, experience, education, and skills. Use action verbs and quantifiable achievements where possible. Format it for ATS (Applicant Tracking System) compatibility.`;
+Create a realistic, well-structured CV with appropriate sections. Make it suitable for ATS systems. Return only the CV content in plain text format, no markdown.`;
 
       const { text: cvText } = await generateText({
         model: gateway('openai/gpt-4o-mini'),
         prompt,
       });
 
-      app.logger.info({ userId: session.user.id, targetRole: body.target_role }, 'CV generated successfully');
+      app.logger.info({ userId: session.user.id }, 'CV generated successfully');
       return {
         cv_text: cvText,
-        sections: {
-          professional_summary: body.summary,
-          experience: experienceText,
-          education: educationText,
-          skills: body.skills.join(', '),
-          achievements: 'Professional CV generated with AI assistance',
-        },
       };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to generate CV');
@@ -234,28 +109,23 @@ Create a well-formatted CV with sections for professional summary, experience, e
   // POST /api/cv/improve
   fastify.post('/api/cv/improve', {
     schema: {
-      description: 'Improve an existing CV using GPT-4o-mini',
+      description: 'Improve an existing CV',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
-        required: ['cv_text', 'target_role'],
+        required: ['cv_text'],
         properties: {
           cv_text: { type: 'string' },
-          target_role: { type: 'string' },
-          focus_areas: {
-            type: 'array',
-            items: { type: 'string', enum: ['impact_statements', 'keywords', 'formatting', 'achievements', 'summary'] },
-          },
+          job_description: { type: 'string' },
+          focus_areas: { type: 'array', items: { type: 'string' } },
         },
       },
       response: {
         200: {
           type: 'object',
           properties: {
-            improved_cv_text: { type: 'string' },
-            suggestions: { type: 'array', items: { type: 'string' } },
-            score_before: { type: 'integer' },
-            score_after: { type: 'integer' },
+            improved_cv: { type: 'string' },
+            changes_made: { type: 'array', items: { type: 'string' } },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -263,44 +133,43 @@ Create a well-formatted CV with sections for professional summary, experience, e
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { cv_text: string; job_description?: string; focus_areas?: string[] } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const validation = cvImproveBodySchema.safeParse(request.body);
-    if (!validation.success) {
-      return reply.status(400).send({ error: 'Invalid request body' });
+    const { cv_text, job_description, focus_areas } = request.body;
+
+    if (!cv_text) {
+      return reply.status(400).send({ error: 'cv_text is required' });
     }
 
-    const body = validation.data;
-    app.logger.info({ userId: session.user.id, targetRole: body.target_role, focusAreas: body.focus_areas }, 'Improving CV');
+    app.logger.info({ userId: session.user.id }, 'Improving CV');
 
     try {
-      const focusGuidance = body.focus_areas && body.focus_areas.length > 0
-        ? `Focus on: ${body.focus_areas.join(', ')}`
+      const focusGuidance = focus_areas && focus_areas.length > 0
+        ? `Focus on: ${focus_areas.join(', ')}`
         : 'Focus on all areas of improvement';
 
-      const prompt = `You are an expert CV reviewer and career coach. Improve this CV for the role of ${body.target_role}.
+      const jobContext = job_description
+        ? `Target Job Description:\n${job_description}\n\n`
+        : '';
 
-${focusGuidance}
+      const prompt = `You are an expert CV reviewer. Improve the following CV${job_description ? ' to match the job description' : ''}.
+
+${jobContext}${focusGuidance}
 
 Current CV:
-${body.cv_text}
+${cv_text}
 
-1. First, rate the current CV from 0-100 on overall quality and impact
-2. Rewrite and improve the CV with:
-   - Stronger action verbs and impact statements
-   - Quantifiable achievements and metrics
-   - Industry-relevant keywords for the target role
-   - Better formatting and readability
-   - Removed weak language or vague statements
-3. Provide 5-7 specific suggestions for further improvement
+Improve the CV with:
+- Stronger action verbs and impact statements
+- Quantifiable achievements and metrics
+- Relevant keywords
+- Better formatting and readability
 
 Return a JSON object with:
-- score_before: integer 0-100
-- score_after: integer 0-100 (after improvements)
-- improved_cv: the improved CV text
-- suggestions: array of 5-7 actionable improvement suggestions`;
+- improved_cv: the improved CV text (plain text)
+- changes_made: array of specific changes and improvements made`;
 
       const { text: response } = await generateText({
         model: gateway('openai/gpt-4o-mini'),
@@ -318,19 +187,15 @@ Return a JSON object with:
       } catch {
         app.logger.warn({ userId: session.user.id }, 'Failed to parse AI response, using defaults');
         parsedResponse = {
-          score_before: 70,
-          score_after: 85,
-          improved_cv: body.cv_text,
-          suggestions: ['Add quantifiable achievements', 'Use industry keywords', 'Include metrics and results', 'Strengthen opening statement', 'Add specific project outcomes'],
+          improved_cv: cv_text,
+          changes_made: ['Review CV structure', 'Add quantifiable achievements', 'Enhance keyword presence'],
         };
       }
 
-      app.logger.info({ userId: session.user.id, scoreBefore: parsedResponse.score_before, scoreAfter: parsedResponse.score_after }, 'CV improved successfully');
+      app.logger.info({ userId: session.user.id }, 'CV improved successfully');
       return {
-        improved_cv_text: parsedResponse.improved_cv || body.cv_text,
-        suggestions: parsedResponse.suggestions || [],
-        score_before: parsedResponse.score_before || 70,
-        score_after: parsedResponse.score_after || 85,
+        improved_cv: parsedResponse.improved_cv || cv_text,
+        changes_made: parsedResponse.changes_made || [],
       };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to improve CV');
@@ -341,18 +206,17 @@ Return a JSON object with:
   // POST /api/cover-letter/generate
   fastify.post('/api/cover-letter/generate', {
     schema: {
-      description: 'Generate a tailored cover letter using GPT-4o-mini',
+      description: 'Generate a professional cover letter',
       tags: ['ai', 'cover-letter'],
       body: {
         type: 'object',
-        required: ['applicant_name', 'job_title', 'company_name', 'job_description', 'cv_summary'],
+        required: ['job_title', 'company'],
         properties: {
-          applicant_name: { type: 'string' },
           job_title: { type: 'string' },
-          company_name: { type: 'string' },
+          company: { type: 'string' },
           job_description: { type: 'string' },
-          cv_summary: { type: 'string' },
-          tone: { type: 'string', enum: ['professional', 'enthusiastic', 'concise'], default: 'professional' },
+          cv_text: { type: 'string' },
+          tone: { type: 'string' },
         },
       },
       response: {
@@ -360,7 +224,6 @@ Return a JSON object with:
           type: 'object',
           properties: {
             cover_letter: { type: 'string' },
-            word_count: { type: 'integer' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -368,52 +231,35 @@ Return a JSON object with:
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: any }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { job_title: string; company: string; job_description?: string; cv_text?: string; tone?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const validation = coverLetterBodySchema.safeParse(request.body);
-    if (!validation.success) {
-      return reply.status(400).send({ error: 'Invalid request body' });
+    const { job_title, company, job_description, cv_text, tone = 'professional' } = request.body;
+
+    if (!job_title || !company) {
+      return reply.status(400).send({ error: 'job_title and company are required' });
     }
 
-    const body = validation.data;
-    app.logger.info({ userId: session.user.id, company: body.company_name, jobTitle: body.job_title }, 'Generating cover letter');
+    app.logger.info({ userId: session.user.id, company, jobTitle: job_title }, 'Generating cover letter');
 
     try {
-      const toneGuidance = {
-        professional: 'formal, professional, and business-like',
-        enthusiastic: 'enthusiastic, energetic, and passionate',
-        concise: 'concise, direct, and to-the-point',
-      };
+      const jobContext = job_description ? `Job Description:\n${job_description}\n\n` : '';
+      const cvContext = cv_text ? `Candidate Background:\n${cv_text}\n\n` : '';
 
-      const prompt = `Write a ${toneGuidance[body.tone]} cover letter for the following:
+      const prompt = `Write a professional cover letter for the position of ${job_title} at ${company}.
 
-Applicant: ${body.applicant_name}
-Target Position: ${body.job_title} at ${body.company_name}
+${jobContext}${cvContext}Tone: ${tone}
 
-Job Description:
-${body.job_description}
-
-Applicant's Background (CV Summary):
-${body.cv_summary}
-
-Requirements:
-- 3-4 paragraphs
-- Specific reference to the company and role
-- Highlight relevant experience from the CV summary
-- Professional formatting suitable for email or document submission
-- Length: 250-350 words`;
+Generate a well-structured cover letter that is 3-4 paragraphs long and suitable for submission.`;
 
       const { text: coverLetterText } = await generateText({
         model: gateway('openai/gpt-4o-mini'),
         prompt,
       });
 
-      const wordCount = coverLetterText.split(/\s+/).filter(word => word.length > 0).length;
-
-      app.logger.info({ userId: session.user.id, wordCount }, 'Cover letter generated successfully');
-      return { cover_letter: coverLetterText, word_count: wordCount };
+      app.logger.info({ userId: session.user.id }, 'Cover letter generated successfully');
+      return { cover_letter: coverLetterText };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to generate cover letter');
       return reply.status(500).send({ error: 'Failed to generate cover letter' });
@@ -532,26 +378,27 @@ Return ONLY a JSON array of match objects, no other text. Example format:
   // POST /api/cv/score
   fastify.post('/api/cv/score', {
     schema: {
-      description: 'Score a CV using AI analysis',
+      description: 'Score a CV using AI analysis and save results to profile',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
-        required: ['file_base64', 'file_name', 'mime_type'],
+        required: ['file_base64', 'file_name'],
         properties: {
           file_base64: { type: 'string', description: 'Base64-encoded file content' },
           file_name: { type: 'string', description: 'Original filename' },
-          mime_type: { type: 'string', description: 'MIME type of the file (e.g. application/pdf)' },
+          mime_type: { type: 'string', description: 'MIME type of the file (optional)' },
         },
       },
       response: {
         200: {
           type: 'object',
           properties: {
-            score: { type: 'number', minimum: 0, maximum: 100 },
+            overall_score: { type: 'number', minimum: 0, maximum: 100 },
+            industry_scores: { type: 'object' },
+            improvement_tips: { type: 'array', items: { type: 'string' } },
+            industry_fit: { type: 'string' },
             summary: { type: 'string' },
-            strengths: { type: 'array', items: { type: 'string' } },
-            improvements: { type: 'array', items: { type: 'string' } },
-            keywords_found: { type: 'array', items: { type: 'string' } },
+            cv_text: { type: 'string' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -559,19 +406,31 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: { file_base64: string; file_name: string; mime_type: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { file_base64: string; file_name: string; mime_type?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
     const { file_base64, file_name, mime_type } = request.body;
 
-    app.logger.info({ userId: session.user.id, fileName: file_name, mimeType: mime_type }, 'CV score request received');
+    app.logger.info({ userId: session.user.id, fileName: file_name }, 'CV score request received');
 
     try {
       // Validate required fields
-      if (!file_base64 || !file_name || !mime_type) {
+      if (!file_base64 || !file_name) {
         app.logger.warn({ userId: session.user.id }, 'Missing required fields in request body');
-        return reply.status(400).send({ error: 'Missing required fields: file_base64, file_name, mime_type' });
+        return reply.status(400).send({ error: 'Missing required fields: file_base64, file_name' });
+      }
+
+      // Infer MIME type from filename if not provided
+      let detectedMimeType = mime_type;
+      if (!detectedMimeType) {
+        if (file_name.toLowerCase().endsWith('.pdf')) {
+          detectedMimeType = 'application/pdf';
+        } else if (file_name.toLowerCase().endsWith('.docx')) {
+          detectedMimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        } else if (file_name.toLowerCase().endsWith('.txt')) {
+          detectedMimeType = 'text/plain';
+        }
       }
 
       // Decode base64 to buffer
@@ -584,10 +443,10 @@ Return ONLY a JSON array of match objects, no other text. Example format:
         return reply.status(400).send({ error: 'Invalid base64 encoding' });
       }
 
-      // Extract text from file based on mime_type or file extension
+      // Extract text from file based on detected MIME type
       let cvText = '';
       try {
-        if (mime_type === 'application/pdf' || file_name.toLowerCase().endsWith('.pdf')) {
+        if (detectedMimeType === 'application/pdf' || file_name.toLowerCase().endsWith('.pdf')) {
           app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
           try {
             const data = await pdfParse(fileBuffer);
@@ -597,7 +456,7 @@ Return ONLY a JSON array of match objects, no other text. Example format:
             cvText = fileBuffer.toString('utf-8');
           }
         } else if (
-          mime_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          detectedMimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
           file_name.toLowerCase().endsWith('.docx')
         ) {
           app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
@@ -608,15 +467,15 @@ Return ONLY a JSON array of match objects, no other text. Example format:
             app.logger.warn({ err: docxError }, 'DOCX parsing failed, falling back to UTF-8');
             cvText = fileBuffer.toString('utf-8');
           }
-        } else if (mime_type === 'text/plain' || file_name.toLowerCase().endsWith('.txt')) {
+        } else if (detectedMimeType === 'text/plain' || file_name.toLowerCase().endsWith('.txt')) {
           app.logger.debug({ userId: session.user.id }, 'Decoding plain text file');
           cvText = fileBuffer.toString('utf-8');
         } else {
-          app.logger.warn({ userId: session.user.id, mimeType: mime_type }, 'Unsupported file type');
+          app.logger.warn({ userId: session.user.id, mimeType: detectedMimeType }, 'Unsupported file type');
           return reply.status(400).send({ error: 'Unsupported file type' });
         }
       } catch (extractError) {
-        app.logger.error({ err: extractError, fileName: file_name, mimeType: mime_type }, 'Text extraction failed');
+        app.logger.error({ err: extractError, fileName: file_name }, 'Text extraction failed');
         return reply.status(400).send({ error: 'Failed to extract text from file' });
       }
 
@@ -635,21 +494,21 @@ Return ONLY a JSON array of match objects, no other text. Example format:
 
       // Call AI to score the CV
       const scorePrompt = `You are an expert CV/resume reviewer. Analyze the following CV text and return ONLY a valid JSON object (no markdown, no explanation) with these exact fields:
-- score: integer 0-100 representing overall CV quality
+- overall_score: integer 0-100 representing overall CV quality
+- industry_scores: object with keys like "Technology", "Finance", "Marketing", "Healthcare", "Sales" each with integer values 0-100
+- improvement_tips: array of 5-8 actionable strings for CV improvement
+- industry_fit: string naming the best fitting industry
 - summary: string with 2-3 sentence overall assessment
-- strengths: array of exactly 3 strings describing the top strengths
-- improvements: array of exactly 3 strings describing the top areas to improve
-- keywords_found: array of strings listing relevant professional keywords found in the CV
 
 CV Text:
 ${truncatedCvText}`;
 
       const cvScoreSchema = z.object({
-        score: z.number().int().min(0).max(100),
+        overall_score: z.number().int().min(0).max(100),
+        industry_scores: z.record(z.string(), z.number().int().min(0).max(100)),
+        improvement_tips: z.array(z.string()),
+        industry_fit: z.string(),
         summary: z.string(),
-        strengths: z.array(z.string()).length(3),
-        improvements: z.array(z.string()).length(3),
-        keywords_found: z.array(z.string()),
       });
 
       app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV scoring');
@@ -664,20 +523,53 @@ ${truncatedCvText}`;
           throw new Error('generateObject returned invalid result: no object property');
         }
         scoreData = result.object;
-        app.logger.debug({ score: scoreData.score }, 'generateObject returned successfully');
+        app.logger.debug({ score: scoreData.overall_score }, 'generateObject returned successfully');
       } catch (genError) {
         app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV scoring');
         return reply.status(500).send({ error: 'Failed to analyze CV with AI' });
       }
 
-      app.logger.info({ userId: session.user.id, score: scoreData.score }, 'CV scored successfully');
+      // Save results to profiles table
+      try {
+        await app.db.insert(schema.profiles)
+          .values({
+            userId: session.user.id,
+            cvText: truncatedCvText,
+            cvFilename: file_name,
+            cvScore: scoreData.overall_score,
+            overallScore: scoreData.overall_score,
+            industryScores: JSON.stringify(scoreData.industry_scores),
+            improvementTips: JSON.stringify(scoreData.improvement_tips),
+            industryFit: scoreData.industry_fit,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: schema.profiles.userId,
+            set: {
+              cvText: truncatedCvText,
+              cvFilename: file_name,
+              cvScore: scoreData.overall_score,
+              overallScore: scoreData.overall_score,
+              industryScores: JSON.stringify(scoreData.industry_scores),
+              improvementTips: JSON.stringify(scoreData.improvement_tips),
+              industryFit: scoreData.industry_fit,
+              updatedAt: new Date(),
+            },
+          });
+        app.logger.info({ userId: session.user.id }, 'CV scoring saved to profiles');
+      } catch (dbError) {
+        app.logger.warn({ err: dbError }, 'Failed to save CV scoring to profiles, continuing anyway');
+      }
+
+      app.logger.info({ userId: session.user.id, score: scoreData.overall_score }, 'CV scored successfully');
 
       return {
-        score: scoreData.score,
+        overall_score: scoreData.overall_score,
+        industry_scores: scoreData.industry_scores,
+        improvement_tips: scoreData.improvement_tips,
+        industry_fit: scoreData.industry_fit,
         summary: scoreData.summary,
-        strengths: scoreData.strengths,
-        improvements: scoreData.improvements,
-        keywords_found: scoreData.keywords_found,
+        cv_text: cvText.substring(0, 500),
       };
     } catch (error) {
       app.logger.error({ err: error, userId: session.user.id }, 'Failed to score CV');
@@ -688,92 +580,161 @@ ${truncatedCvText}`;
   // POST /api/cv/export-pdf
   fastify.post('/api/cv/export-pdf', {
     schema: {
-      description: 'Export CV content as PDF',
+      description: 'Export CV content as base64-encoded HTML',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
-        required: ['content'],
+        required: ['cv_text'],
         properties: {
-          content: { type: 'string' },
-          title: { type: 'string' },
+          cv_text: { type: 'string' },
+          template: { type: 'string' },
         },
       },
       response: {
-        200: { type: 'string', format: 'binary' },
+        200: {
+          type: 'object',
+          properties: {
+            file_base64: { type: 'string' },
+            filename: { type: 'string' },
+            content_type: { type: 'string' },
+          },
+        },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: { content: string; title?: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { cv_text: string; template?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { content, title } = request.body;
+    const { cv_text } = request.body;
 
-    if (!content) {
-      return reply.status(400).send({ error: 'content is required' });
+    if (!cv_text) {
+      return reply.status(400).send({ error: 'cv_text is required' });
     }
 
     try {
-      app.logger.info({ userId: session.user.id }, 'Exporting CV to PDF');
-      const pdfBuffer = await generatePDF(content, title);
+      app.logger.info({ userId: session.user.id }, 'Exporting CV as HTML');
 
-      reply
-        .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', 'attachment; filename="cv.pdf"')
-        .send(pdfBuffer);
+      // Generate simple HTML representation of the CV
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CV</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+    h2 { color: #333; margin-top: 20px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+    p { margin: 5px 0; }
+    .section { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="section">
+    ${cv_text.split('\n').map(line => {
+      if (line.trim() === '') return '<br>';
+      if (line.toUpperCase() === line && line.trim().length > 0) return `<h2>${line}</h2>`;
+      if (line.trim().endsWith(':')) return `<h3>${line}</h3>`;
+      return `<p>${line}</p>`;
+    }).join('\n')}
+  </div>
+</body>
+</html>`;
 
-      app.logger.info({ userId: session.user.id }, 'CV exported to PDF successfully');
+      const base64Content = Buffer.from(htmlContent).toString('base64');
+
+      app.logger.info({ userId: session.user.id }, 'CV exported as HTML successfully');
+
+      return {
+        file_base64: base64Content,
+        filename: 'cv.html',
+        content_type: 'text/html',
+      };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to export CV to PDF');
-      return reply.status(500).send({ error: 'Failed to generate PDF' });
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to export CV as HTML');
+      return reply.status(500).send({ error: 'Failed to export CV' });
     }
   });
 
   // POST /api/cover-letter/export-pdf
   fastify.post('/api/cover-letter/export-pdf', {
     schema: {
-      description: 'Export cover letter content as PDF',
+      description: 'Export cover letter as base64-encoded HTML',
       tags: ['ai', 'cover-letter'],
       body: {
         type: 'object',
-        required: ['content'],
+        required: ['cover_letter'],
         properties: {
-          content: { type: 'string' },
-          title: { type: 'string' },
+          cover_letter: { type: 'string' },
+          job_title: { type: 'string' },
+          company: { type: 'string' },
         },
       },
       response: {
-        200: { type: 'string', format: 'binary' },
+        200: {
+          type: 'object',
+          properties: {
+            file_base64: { type: 'string' },
+            filename: { type: 'string' },
+            content_type: { type: 'string' },
+          },
+        },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: { content: string; title?: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { cover_letter: string; job_title?: string; company?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { content, title } = request.body;
+    const { cover_letter, job_title, company } = request.body;
 
-    if (!content) {
-      return reply.status(400).send({ error: 'content is required' });
+    if (!cover_letter) {
+      return reply.status(400).send({ error: 'cover_letter is required' });
     }
 
     try {
-      app.logger.info({ userId: session.user.id }, 'Exporting cover letter to PDF');
-      const pdfBuffer = await generatePDF(content, title);
+      app.logger.info({ userId: session.user.id }, 'Exporting cover letter as HTML');
 
-      reply
-        .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', 'attachment; filename="cover-letter.pdf"')
-        .send(pdfBuffer);
+      // Generate HTML representation of the cover letter
+      const title = job_title && company ? `${job_title} at ${company}` : 'Cover Letter';
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.8; max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+    h1 { text-align: center; color: #333; font-size: 24px; margin-bottom: 30px; }
+    p { margin: 15px 0; text-align: justify; }
+    .signature { margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="content">
+    ${cover_letter.split('\n\n').map(paragraph => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`).join('\n')}
+  </div>
+</body>
+</html>`;
 
-      app.logger.info({ userId: session.user.id }, 'Cover letter exported to PDF successfully');
+      const base64Content = Buffer.from(htmlContent).toString('base64');
+
+      app.logger.info({ userId: session.user.id }, 'Cover letter exported as HTML successfully');
+
+      return {
+        file_base64: base64Content,
+        filename: 'cover-letter.html',
+        content_type: 'text/html',
+      };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to export cover letter to PDF');
-      return reply.status(500).send({ error: 'Failed to generate PDF' });
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to export cover letter as HTML');
+      return reply.status(500).send({ error: 'Failed to export cover letter' });
     }
   });
 
@@ -782,23 +743,26 @@ ${truncatedCvText}`;
     schema: {
       description: 'Parse a CV file and extract structured data',
       tags: ['ai', 'cv'],
+      body: {
+        type: 'object',
+        required: ['file_base64'],
+        properties: {
+          file_base64: { type: 'string' },
+          filename: { type: 'string' },
+        },
+      },
       response: {
         200: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            userId: { type: 'string' },
             name: { type: 'string' },
             email: { type: 'string' },
             phone: { type: 'string' },
-            location: { type: 'string' },
             headline: { type: 'string' },
             summary: { type: 'string' },
             skills: { type: 'array', items: { type: 'string' } },
             experience: { type: 'array' },
             education: { type: 'array' },
-            cvText: { type: 'string' },
-            cvFilename: { type: 'string' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -806,241 +770,111 @@ ${truncatedCvText}`;
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { file_base64: string; filename?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    app.logger.info({ userId: session.user.id }, 'CV parse request received');
+    const { file_base64, filename } = request.body;
+
+    if (!file_base64) {
+      return reply.status(400).send({ error: 'file_base64 is required' });
+    }
+
+    app.logger.info({ userId: session.user.id, filename }, 'CV parse request received');
 
     try {
-      const parts = request.parts();
-      let fileBuffer: Buffer | null = null;
-      let filename = '';
-
-      for await (const part of parts) {
-        const partAny = part as any;
-        if (partAny.fieldname === 'cv') {
-          app.logger.debug({
-            type: partAny.type,
-            filename: partAny.filename,
-            hasFile: !!partAny.file,
-            hasToBuffer: typeof partAny.toBuffer,
-            hasValue: !!partAny.value,
-          }, 'Processing cv part');
-
-          try {
-            // Strategy 1: Try .file property
-            if (partAny.file && !fileBuffer) {
-              const chunks: Buffer[] = [];
-              try {
-                for await (const chunk of partAny.file) {
-                  chunks.push(chunk as Buffer);
-                }
-                if (chunks.length > 0) {
-                  fileBuffer = Buffer.concat(chunks);
-                  filename = partAny.filename || 'cv';
-                  app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .file property');
-                }
-              } catch (err) {
-                app.logger.debug({ err }, 'Failed to read from .file property');
-              }
-            }
-
-            // Strategy 2: Try iterating part directly
-            if (!fileBuffer) {
-              const chunks: Buffer[] = [];
-              try {
-                for await (const chunk of partAny) {
-                  chunks.push(chunk as Buffer);
-                }
-                if (chunks.length > 0) {
-                  fileBuffer = Buffer.concat(chunks);
-                  filename = partAny.filename || 'cv';
-                  app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from part iteration');
-                }
-              } catch (err) {
-                app.logger.debug({ err }, 'Failed to iterate part directly');
-              }
-            }
-
-            // Strategy 3: Try toBuffer() method
-            if (!fileBuffer && typeof partAny.toBuffer === 'function') {
-              try {
-                fileBuffer = await partAny.toBuffer();
-                filename = partAny.filename || 'cv';
-                app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file using toBuffer()');
-              } catch (err) {
-                app.logger.debug({ err }, 'toBuffer() failed');
-              }
-            }
-
-            // Strategy 4: Try .value property as fallback
-            if (!fileBuffer && partAny.value !== undefined) {
-              try {
-                if (Buffer.isBuffer(partAny.value)) {
-                  fileBuffer = partAny.value;
-                  filename = partAny.filename || 'cv';
-                  app.logger.debug({ bufferSize: fileBuffer.length }, 'Read file from .value (Buffer)');
-                } else if (typeof partAny.value === 'string' && partAny.value.length > 0) {
-                  fileBuffer = Buffer.from(partAny.value, 'utf-8');
-                  filename = partAny.filename || 'cv';
-                  app.logger.debug({ bufferSize: fileBuffer.length, preview: partAny.value.substring(0, 50) }, 'Read file from .value (string)');
-                }
-              } catch (err) {
-                app.logger.debug({ err }, '.value extraction failed');
-              }
-            }
-          } catch (e) {
-            app.logger.warn({ err: e }, 'Error reading cv part');
-          }
-          break;
-        }
+      // Decode base64 to buffer
+      let fileBuffer: Buffer;
+      try {
+        fileBuffer = Buffer.from(file_base64, 'base64');
+      } catch (err) {
+        app.logger.warn({ err }, 'Failed to decode base64');
+        return reply.status(400).send({ error: 'Invalid base64 encoding' });
       }
 
-      if (!fileBuffer || fileBuffer.length === 0) {
-        app.logger.warn('File buffer is null or empty');
-        return reply.status(400).send({ error: 'No CV file uploaded' });
-      }
-
-      app.logger.debug({ fileBufferLength: fileBuffer.length, filename }, 'File buffer ready for text extraction');
-
-      // Extract text from file based on extension
+      // Extract text from file
       let cvText = '';
       try {
-        if (filename.toLowerCase().endsWith('.pdf')) {
-          app.logger.debug({ userId: session?.user?.id }, 'Extracting text from PDF');
-          const data = await pdfParse(fileBuffer);
-          cvText = data.text || '';
-        } else if (filename.toLowerCase().endsWith('.docx')) {
-          app.logger.debug({ userId: session?.user?.id }, 'Extracting text from DOCX');
-          const result = await mammoth.extractRawText({ buffer: fileBuffer });
-          cvText = result.value || '';
+        if (filename?.toLowerCase().endsWith('.pdf')) {
+          app.logger.debug({ userId: session.user.id }, 'Extracting text from PDF');
+          try {
+            const data = await pdfParse(fileBuffer);
+            cvText = data.text || '';
+          } catch (pdfErr) {
+            app.logger.warn({ err: pdfErr }, 'PDF parsing failed, falling back to UTF-8');
+            cvText = fileBuffer.toString('utf-8');
+          }
+        } else if (filename?.toLowerCase().endsWith('.docx')) {
+          app.logger.debug({ userId: session.user.id }, 'Extracting text from DOCX');
+          try {
+            const result = await mammoth.extractRawText({ buffer: fileBuffer });
+            cvText = result.value || '';
+          } catch (docxErr) {
+            app.logger.warn({ err: docxErr }, 'DOCX parsing failed, falling back to UTF-8');
+            cvText = fileBuffer.toString('utf-8');
+          }
         } else {
-          app.logger.debug({ userId: session?.user?.id }, 'Treating file as plain text');
           cvText = fileBuffer.toString('utf-8');
         }
-      } catch (extractError) {
-        app.logger.warn({ err: extractError, filename }, 'Text extraction failed, falling back to UTF-8');
-        cvText = fileBuffer.toString('utf-8');
+      } catch (err) {
+        app.logger.error({ err }, 'Text extraction failed');
+        return reply.status(400).send({ error: 'Failed to extract text from file' });
       }
 
       if (!cvText || cvText.trim().length === 0) {
-        app.logger.warn({ userId: session?.user?.id }, 'No text extracted from CV file');
-        return reply.status(400).send({ error: 'Could not extract text from the uploaded file' });
+        app.logger.warn({ userId: session.user.id }, 'No text extracted from CV');
+        return reply.status(400).send({ error: 'Could not extract text from file' });
       }
 
-      app.logger.info({ userId: session.user.id, textLength: cvText.length }, 'CV text read successfully');
-      const cvFilename = filename;
-
-      // Use OpenAI to extract structured CV data
+      // Parse CV text using AI
       const parseSchema = z.object({
         name: z.string().optional(),
         email: z.string().optional(),
         phone: z.string().optional(),
-        location: z.string().optional(),
         headline: z.string().optional(),
         summary: z.string().optional(),
-        skills: z.array(z.any()).optional(),
-        experience: z.array(z.any()).optional(),
-        education: z.array(z.any()).optional(),
-      }).passthrough();
+        skills: z.array(z.string()).optional(),
+        experience: z.array(z.object({
+          title: z.string().optional(),
+          company: z.string().optional(),
+          duration: z.string().optional(),
+          description: z.string().optional(),
+        })).optional(),
+        education: z.array(z.object({
+          degree: z.string().optional(),
+          institution: z.string().optional(),
+          year: z.string().optional(),
+        })).optional(),
+      });
 
-      app.logger.debug({ userId: session.user.id }, 'Calling generateObject for CV parsing');
-      let parsedData;
+      app.logger.debug({ userId: session.user.id }, 'Parsing CV with AI');
       try {
         const result = await generateObject({
           model: gateway('openai/gpt-4o-mini'),
           schema: parseSchema,
-          prompt: `Extract key CV information from this text:\n\nCV Text:\n${cvText}\n\nReturn JSON with: name, email, phone, location, headline, summary (strings or null if not found), skills (array of strings), experience (array of job objects), education (array of education objects).`,
+          prompt: `Extract information from this CV:\n\n${cvText}\n\nReturn JSON with: name, email, phone, headline, summary, skills (array), experience (array with title, company, duration, description), education (array with degree, institution, year).`,
         });
-        if (!result || !result.object) {
-          throw new Error('generateObject returned invalid result: no object property');
-        }
-        parsedData = result.object;
-        // Ensure arrays have default values if null or undefined
-        parsedData.skills = Array.isArray(parsedData.skills) ? parsedData.skills : [];
-        parsedData.experience = Array.isArray(parsedData.experience) ? parsedData.experience : [];
-        parsedData.education = Array.isArray(parsedData.education) ? parsedData.education : [];
-        app.logger.debug({ name: parsedData.name }, 'generateObject returned successfully');
-      } catch (genError) {
-        app.logger.error({ err: genError, genErrorMsg: genError instanceof Error ? genError.message : String(genError) }, 'generateObject failed for CV parsing, using defaults');
-        // Return default values if AI parsing fails
-        parsedData = {
-          name: undefined,
-          email: undefined,
-          phone: undefined,
-          location: undefined,
-          headline: undefined,
-          summary: undefined,
-          skills: [],
-          experience: [],
-          education: [],
-        };
-      }
 
-      app.logger.info({ userId: session.user.id }, 'CV parsed successfully');
+        const parsed = result.object;
+        app.logger.info({ userId: session.user.id, name: parsed.name }, 'CV parsed successfully');
 
-      // Save to profiles table (upsert by user_id)
-      try {
-        const result = await app.db.insert(schema.profiles)
-          .values({
-            userId: session.user.id,
-            headline: parsedData.headline || '',
-            summary: parsedData.summary || '',
-            location: parsedData.location || '',
-            phone: parsedData.phone || '',
-            skills: JSON.stringify(parsedData.skills || []),
-            experience: JSON.stringify(parsedData.experience || []),
-            education: JSON.stringify(parsedData.education || []),
-            cvText: cvText,
-            cvFilename: cvFilename,
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: schema.profiles.userId,
-            set: {
-              headline: parsedData.headline || '',
-              summary: parsedData.summary || '',
-              location: parsedData.location || '',
-              phone: parsedData.phone || '',
-              skills: JSON.stringify(parsedData.skills || []),
-              experience: JSON.stringify(parsedData.experience || []),
-              education: JSON.stringify(parsedData.education || []),
-              cvText: cvText,
-              cvFilename: cvFilename,
-              updatedAt: new Date(),
-            },
-          })
-          .returning();
-
-        const profile = result[0];
-        const parsedProfile = {
-          ...profile,
-          skills: profile.skills ? JSON.parse(profile.skills) : [],
-          experience: profile.experience ? JSON.parse(profile.experience) : [],
-          education: profile.education ? JSON.parse(profile.education) : [],
-        };
-
-        app.logger.info({ userId: session.user.id, profileId: profile.id }, 'Profile saved successfully');
-        return parsedProfile;
-      } catch (dbError) {
-        app.logger.warn({ err: dbError }, 'Failed to save to profile, returning parsed data anyway');
         return {
-          userId: session.user.id,
-          ...parsedData,
-          skills: parsedData.skills || [],
-          experience: parsedData.experience || [],
-          education: parsedData.education || [],
-          cvText,
-          cvFilename: cvFilename,
+          name: parsed.name || '',
+          email: parsed.email || '',
+          phone: parsed.phone || '',
+          headline: parsed.headline || '',
+          summary: parsed.summary || '',
+          skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+          experience: Array.isArray(parsed.experience) ? parsed.experience : [],
+          education: Array.isArray(parsed.education) ? parsed.education : [],
         };
+      } catch (aiErr) {
+        app.logger.error({ err: aiErr }, 'AI parsing failed');
+        return reply.status(500).send({ error: 'Failed to parse CV with AI' });
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : '';
-      const details = errorMsg || 'Unknown error occurred';
-      app.logger.error({ err: error, userId: session.user.id, message: errorMsg, stack: errorStack }, 'Failed to parse CV');
-      return reply.status(500).send({ error: 'Failed to parse CV', details });
+      app.logger.error({ err: error, userId: session.user.id }, 'Failed to parse CV');
+      return reply.status(500).send({ error: 'Failed to parse CV' });
     }
   });
 

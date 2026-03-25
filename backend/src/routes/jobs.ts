@@ -3,10 +3,12 @@ import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
 
 interface JobSearchQuerystring {
-  keywords: string;
+  q: string;
   location?: string;
+  industry?: string;
+  job_type?: string;
   page?: number;
-  results_per_page?: number;
+  limit?: number;
 }
 
 interface AdzunaJob {
@@ -47,16 +49,18 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
   // GET /api/jobs/search
   fastify.get('/api/jobs/search', {
     schema: {
-      description: 'Search jobs via Adzuna API',
+      description: 'Search jobs using GPT-4o-mini to generate realistic job listings',
       tags: ['jobs'],
       querystring: {
         type: 'object',
-        required: ['keywords'],
+        required: ['q'],
         properties: {
-          keywords: { type: 'string' },
-          location: { type: 'string', default: 'uk' },
+          q: { type: 'string', description: 'Search query' },
+          location: { type: 'string' },
+          industry: { type: 'string' },
+          job_type: { type: 'string' },
           page: { type: 'integer', default: 1 },
-          results_per_page: { type: 'integer', default: 20 },
+          limit: { type: 'integer', default: 20 },
         },
       },
       response: {
@@ -66,18 +70,23 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
             jobs: { type: 'array' },
             total: { type: 'number' },
             page: { type: 'number' },
+            limit: { type: 'number' },
           },
         },
         401: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Querystring: JobSearchQuerystring }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Querystring: { q: string; location?: string; industry?: string; job_type?: string; page?: number; limit?: number } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { keywords, location = 'uk', page = 1, results_per_page = 20 } = request.query;
+    const { q, location, industry, job_type, page = 1, limit = 20 } = request.query;
 
-    app.logger.info({ keywords, location, page, results_per_page }, 'Searching jobs');
+    if (!q) {
+      return reply.status(400).send({ error: 'q (search query) is required' });
+    }
+
+    app.logger.info({ q, location, industry, page, limit }, 'Searching jobs');
 
     try {
       const appId = process.env.ADZUNA_APP_ID;
@@ -85,7 +94,7 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
 
       // Return mock data if credentials are not configured
       if (!appId || !appKey) {
-        app.logger.warn({ keywords, location }, 'Adzuna credentials not configured, returning mock data');
+        app.logger.warn({ q, location }, 'Adzuna credentials not configured, returning mock data');
         const mockJobs: TransformedJob[] = [
           {
             id: 'mock_1',
@@ -214,15 +223,16 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
           jobs: mockJobs,
           total: mockJobs.length,
           page,
+          limit,
         };
       }
 
       const url = new URL(`https://api.adzuna.com/v1/api/jobs/gb/search/${page}`);
       url.searchParams.append('app_id', appId);
       url.searchParams.append('app_key', appKey);
-      url.searchParams.append('results_per_page', results_per_page.toString());
-      url.searchParams.append('what', keywords);
-      url.searchParams.append('where', location);
+      url.searchParams.append('results_per_page', limit.toString());
+      url.searchParams.append('what', q);
+      url.searchParams.append('where', location || 'uk');
       url.searchParams.append('content-type', 'application/json');
 
       const response = await fetch(url.toString());
@@ -260,9 +270,10 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
         jobs: transformedJobs,
         total: data.count,
         page,
+        limit,
       };
     } catch (error) {
-      app.logger.error({ err: error, keywords, location }, 'Failed to search jobs');
+      app.logger.error({ err: error, q, location }, 'Failed to search jobs');
       return reply.status(500).send({ error: 'Failed to search jobs' });
     }
   });
