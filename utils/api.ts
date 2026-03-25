@@ -53,9 +53,13 @@ export const apiCall = async <T = any>(
   let response: Response;
   try {
     response = await fetch(url, fetchOptions);
-  } catch (networkError) {
-    console.error(`[API] Network error for ${method} ${url}:`, networkError);
-    throw networkError;
+  } catch (networkError: any) {
+    const message =
+      networkError?.message && !networkError.message.toLowerCase().includes("failed to fetch")
+        ? networkError.message
+        : "Network error: unable to reach the server. Check your internet connection and try again.";
+    console.error(`[API] Network error for ${method} ${url}:`, message);
+    throw new Error(message);
   }
 
   console.log(`[API] ${method} ${url} → ${response.status}`);
