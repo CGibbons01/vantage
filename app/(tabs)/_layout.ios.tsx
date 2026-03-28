@@ -25,13 +25,13 @@ const TABS = [
 export default function TabLayout() {
   useSubscriptionGuard();
   return (
-    <View style={{ flex: 1, backgroundColor: "#0F172A" }}>
+    <View style={{ flex: 1, backgroundColor: "#0D0B1E" }}>
       <Tabs
         screenOptions={{
           headerShown: true,
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: "center",
-          headerStyle: { backgroundColor: "#0F172A" },
+          headerStyle: { backgroundColor: "#0D0B1E" },
           headerShadowVisible: false,
           tabBarStyle: { display: "none" },
         }}

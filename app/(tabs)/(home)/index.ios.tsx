@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
   ActivityIndicator,
   Platform,
   Dimensions,
+  Animated,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 
@@ -16,8 +16,10 @@ const GRID_GAP = 10;
 const CARD_WIDTH = Math.floor((SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3);
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { BodyScrollView } from "@/components/BodyScrollView";
 import { NotificationBell } from "@/components/NotificationBell";
+import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useAuth } from "@/contexts/AuthContext";
 import { COLORS, getScoreColor } from "@/constants/theme";
 import { apiGet, getBearerToken, BACKEND_URL } from "@/utils/api";
@@ -42,31 +44,38 @@ interface Profile {
   } | null;
 }
 
-interface CvScoreResult {
-  overall_score?: number;
-  score?: number;
-  industry_fit?: string;
-  industry_scores?: { industry: string; score: number }[];
-  improvement_tips?: string[];
-  section_scores?: SectionScore[];
-  strengths?: string[];
-  improvements?: string[];
-  [key: string]: any;
-}
-
 const QUICK_ACTIONS = [
-  { label: "Search Jobs", icon: "briefcase-outline" as const, route: "/(tabs)/jobs" },
-  { label: "AI CV Writer", icon: "pencil-outline" as const, route: "/(tabs)/cv-writer" },
-  { label: "Cover Letter", icon: "mail-outline" as const, route: "/(tabs)/cover-letter" },
-  { label: "Applications", icon: "list-outline" as const, route: "/(tabs)/applications" },
-  { label: "View Profile", icon: "person-outline" as const, route: "/profile/edit" },
-  { label: "Job Alerts", icon: "notifications-outline" as const, route: "/(tabs)/notifications" },
+  { label: "Search Jobs", icon: "briefcase-outline" as const, route: "/(tabs)/jobs", gradient: ['#7C3AED', '#4F46E5'] as const },
+  { label: "AI CV Writer", icon: "pencil-outline" as const, route: "/(tabs)/cv-writer", gradient: ['#4F46E5', '#3B82F6'] as const },
+  { label: "Cover Letter", icon: "mail-outline" as const, route: "/(tabs)/cover-letter", gradient: ['#3B82F6', '#06B6D4'] as const },
+  { label: "Applications", icon: "list-outline" as const, route: "/(tabs)/applications", gradient: ['#EC4899', '#7C3AED'] as const },
+  { label: "View Profile", icon: "person-outline" as const, route: "/profile/edit", gradient: ['#7C3AED', '#EC4899'] as const },
+  { label: "Job Alerts", icon: "notifications-outline" as const, route: "/(tabs)/notifications", gradient: ['#F59E0B', '#EC4899'] as const },
 ];
 
 function getChipColor(score: number): string {
   if (score >= 75) return COLORS.scoreGreen;
   if (score >= 50) return COLORS.scoreAmber;
   return COLORS.scoreRed;
+}
+
+function AnimatedCard({ index, children }: { index: number; children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(16)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 350, delay: index * 60, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 350, delay: index * 60, useNativeDriver: true }),
+    ]).start();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
 }
 
 export default function HomeScreen() {
@@ -78,7 +87,6 @@ export default function HomeScreen() {
   const [industryFit, setIndustryFit] = useState<string | null>(null);
   const [industryScores, setIndustryScores] = useState<{ industry: string; score: number }[] | null>(null);
   const [improvementTips, setImprovementTips] = useState<string[] | null>(null);
-  const [uploadSectionScores, setUploadSectionScores] = useState<SectionScore[] | null>(null);
   const [uploadStrengths, setUploadStrengths] = useState<string[] | null>(null);
   const [uploadImprovements, setUploadImprovements] = useState<string[] | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -92,20 +100,13 @@ export default function HomeScreen() {
 
   const scoreToShow = cvScore ?? (profile?.cv_score != null ? Number(profile.cv_score) : null);
   const industryFitToShow = industryFit ?? profile?.industry_fit ?? null;
-  const scoreColor = scoreToShow != null ? getScoreColor(scoreToShow) : COLORS.accent;
+  const scoreColor = scoreToShow != null ? getScoreColor(scoreToShow) : COLORS.primaryLight;
 
   const strengths: string[] | null =
-    uploadStrengths ??
-    profile?.strengths ??
-    profile?.analysis?.strengths ??
-    null;
+    uploadStrengths ?? profile?.strengths ?? profile?.analysis?.strengths ?? null;
 
   const tipsToShow: string[] | null =
-    improvementTips ??
-    uploadImprovements ??
-    profile?.improvements ??
-    profile?.analysis?.improvements ??
-    null;
+    improvementTips ?? uploadImprovements ?? profile?.improvements ?? profile?.analysis?.improvements ?? null;
 
   const hasInsights = scoreToShow != null;
 
@@ -154,7 +155,6 @@ export default function HomeScreen() {
       console.log('[Dashboard] CV file selected:', fileName, 'mime:', mimeType);
       setUploading(true);
 
-      // Read file as base64 — use FileSystem on native, FileReader API on web
       let base64: string;
       if (Platform.OS === 'web') {
         console.log('[Dashboard] Web platform — reading file via FileReader');
@@ -163,7 +163,6 @@ export default function HomeScreen() {
           const reader = new FileReader();
           reader.onload = () => {
             const dataUrl = reader.result as string;
-            // Strip "data:<mime>;base64," prefix
             const raw = dataUrl.split(',')[1] ?? '';
             resolve(raw);
           };
@@ -184,11 +183,7 @@ export default function HomeScreen() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({
-          file_base64: base64,
-          file_name: fileName,
-          mime_type: mimeType,
-        }),
+        body: JSON.stringify({ file_base64: base64, file_name: fileName, mime_type: mimeType }),
       });
 
       if (!response.ok) {
@@ -204,7 +199,6 @@ export default function HomeScreen() {
       setIndustryFit(data.industry_fit ?? null);
       setIndustryScores(data.industry_scores ?? null);
       setImprovementTips(data.improvement_tips ?? null);
-      setUploadSectionScores(data.section_scores ?? null);
       setUploadStrengths(data.strengths ?? null);
       setUploadImprovements(data.improvements ?? null);
     } catch (err: any) {
@@ -221,7 +215,6 @@ export default function HomeScreen() {
     setIndustryFit(null);
     setIndustryScores(null);
     setImprovementTips(null);
-    setUploadSectionScores(null);
     setUploadStrengths(null);
     setUploadImprovements(null);
     setProfile((prev) => prev ? { ...prev, cv_score: null } : null);
@@ -247,37 +240,53 @@ export default function HomeScreen() {
           </View>
           <View style={styles.headerRight}>
             <NotificationBell />
-            <View style={styles.avatar}>
+            <LinearGradient
+              colors={['#7C3AED', '#EC4899']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatar}
+            >
               <Text style={styles.avatarText}>{userInitial}</Text>
-            </View>
+            </LinearGradient>
           </View>
         </View>
 
         {/* CV Card */}
         {scoreToShow == null ? (
           <View style={styles.card}>
-            <View style={styles.uploadIconCircle}>
-              <Ionicons name="cloud-upload-outline" size={28} color={COLORS.accent} />
-            </View>
+            <LinearGradient
+              colors={['rgba(124, 58, 237, 0.15)', 'rgba(236, 72, 153, 0.08)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.uploadIconCircle}
+            >
+              <Ionicons name="cloud-upload-outline" size={28} color={COLORS.primaryLight} />
+            </LinearGradient>
             <Text style={styles.cardTitle}>Upload Your CV</Text>
             <Text style={styles.cardSubtitle}>
               Let our AI analyse your CV, score it, and match you with the best opportunities.
             </Text>
-            <TouchableOpacity
+            <AnimatedPressable
               style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
               onPress={handleUploadCV}
               disabled={uploading}
-              activeOpacity={0.8}
             >
-              {uploading ? (
-                <ActivityIndicator color="#0F172A" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="cloud-upload-outline" size={18} color="#0F172A" style={styles.uploadButtonIcon} />
-                  <Text style={styles.uploadButtonText}>Upload CV (PDF or Word)</Text>
-                </>
-              )}
-            </TouchableOpacity>
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.uploadButtonGradient}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" style={styles.uploadButtonIcon} />
+                    <Text style={styles.uploadButtonText}>Upload CV (PDF or Word)</Text>
+                  </>
+                )}
+              </LinearGradient>
+            </AnimatedPressable>
             {uploadError != null && (
               <Text style={styles.uploadError}>{uploadError}</Text>
             )}
@@ -289,14 +298,13 @@ export default function HomeScreen() {
             {industryFitToShow != null && (
               <Text style={styles.industryFit}>{industryFitToShow}</Text>
             )}
-            <TouchableOpacity
+            <AnimatedPressable
               style={styles.reuploadButton}
               onPress={handleReupload}
-              activeOpacity={0.8}
             >
-              <Ionicons name="refresh-outline" size={16} color={COLORS.accent} style={styles.reuploadIcon} />
+              <Ionicons name="refresh-outline" size={16} color={COLORS.primaryLight} style={styles.reuploadIcon} />
               <Text style={styles.reuploadText}>Re-upload CV</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         )}
 
@@ -325,43 +333,35 @@ export default function HomeScreen() {
         {/* Strengths & Improvement Tips */}
         {hasInsights && (
           <View style={styles.insightsRow}>
-            {/* Strengths */}
             <View style={[styles.insightCard, styles.strengthsCard]}>
               <View style={styles.insightHeader}>
                 <Ionicons name="checkmark-circle-outline" size={18} color={COLORS.scoreGreen} />
                 <Text style={[styles.insightTitle, { color: COLORS.scoreGreen }]}>Strengths</Text>
               </View>
               {strengths != null && strengths.length > 0 ? (
-                strengths.slice(0, 3).map((item, i) => {
-                  const key = `strength-${i}`;
-                  return (
-                    <View key={key} style={styles.bulletRow}>
-                      <Text style={[styles.bullet, { color: COLORS.scoreGreen }]}>{"\u2022"}</Text>
-                      <Text style={styles.bulletText}>{item}</Text>
-                    </View>
-                  );
-                })
+                strengths.slice(0, 3).map((item, i) => (
+                  <View key={`strength-${i}`} style={styles.bulletRow}>
+                    <Text style={[styles.bullet, { color: COLORS.scoreGreen }]}>{"\u2022"}</Text>
+                    <Text style={styles.bulletText}>{item}</Text>
+                  </View>
+                ))
               ) : (
                 <Text style={styles.insightPlaceholder}>Upload your CV to see personalized insights</Text>
               )}
             </View>
 
-            {/* Improvement Tips */}
             <View style={[styles.insightCard, styles.improvementsCard]}>
               <View style={styles.insightHeader}>
                 <Ionicons name="bulb-outline" size={18} color={COLORS.scoreAmber} />
                 <Text style={[styles.insightTitle, { color: COLORS.scoreAmber }]}>Improvement Tips</Text>
               </View>
               {tipsToShow != null && tipsToShow.length > 0 ? (
-                tipsToShow.slice(0, 4).map((item, i) => {
-                  const key = `tip-${i}`;
-                  return (
-                    <View key={key} style={styles.bulletRow}>
-                      <Text style={[styles.bullet, { color: COLORS.scoreAmber }]}>{"\u2022"}</Text>
-                      <Text style={styles.bulletText}>{item}</Text>
-                    </View>
-                  );
-                })
+                tipsToShow.slice(0, 4).map((item, i) => (
+                  <View key={`tip-${i}`} style={styles.bulletRow}>
+                    <Text style={[styles.bullet, { color: COLORS.scoreAmber }]}>{"\u2022"}</Text>
+                    <Text style={styles.bulletText}>{item}</Text>
+                  </View>
+                ))
               ) : (
                 <Text style={styles.insightPlaceholder}>Upload your CV to see personalized insights</Text>
               )}
@@ -372,18 +372,25 @@ export default function HomeScreen() {
         {/* Quick Actions */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.grid}>
-          {QUICK_ACTIONS.map((action) => {
+          {QUICK_ACTIONS.map((action, index) => {
             const onPress = () => handleQuickAction(action.label, action.route);
             return (
-              <TouchableOpacity
-                key={action.label}
-                style={styles.gridItem}
-                onPress={onPress}
-                activeOpacity={0.75}
-              >
-                <Ionicons name={action.icon} size={22} color={COLORS.accent} />
-                <Text style={styles.gridLabel} numberOfLines={2}>{action.label}</Text>
-              </TouchableOpacity>
+              <AnimatedCard key={action.label} index={index}>
+                <AnimatedPressable
+                  style={styles.gridItem}
+                  onPress={onPress}
+                >
+                  <LinearGradient
+                    colors={action.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.gridIconCircle}
+                  >
+                    <Ionicons name={action.icon} size={20} color="#FFFFFF" />
+                  </LinearGradient>
+                  <Text style={styles.gridLabel} numberOfLines={2}>{action.label}</Text>
+                </AnimatedPressable>
+              </AnimatedCard>
             );
           })}
         </View>
@@ -400,9 +407,8 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 120,
   },
-  // Header
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -421,7 +427,7 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "700",
     color: COLORS.text,
-    letterSpacing: 0.2,
+    letterSpacing: -0.3,
   },
   headerRight: {
     flexDirection: "row",
@@ -432,7 +438,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -441,9 +446,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#FFFFFF",
   },
-  // Card
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 24,
     alignItems: "center",
@@ -451,12 +455,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  // Upload card
   uploadIconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "rgba(245, 158, 11, 0.18)",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
@@ -476,13 +478,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   uploadButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    minWidth: 200,
+  },
+  uploadButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.accent,
-    borderRadius: 10,
-    paddingVertical: 13,
-    paddingHorizontal: 32,
-    minWidth: 160,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
     justifyContent: "center",
   },
   uploadButtonDisabled: {
@@ -494,7 +498,7 @@ const styles = StyleSheet.create({
   uploadButtonText: {
     fontSize: 15,
     fontWeight: "700",
-    color: "#0F172A",
+    color: "#FFFFFF",
   },
   uploadError: {
     marginTop: 12,
@@ -502,7 +506,6 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     textAlign: "center",
   },
-  // Score card
   scoreLabel: {
     fontSize: 13,
     color: COLORS.textSecondary,
@@ -526,7 +529,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.primary,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 20,
@@ -537,11 +540,10 @@ const styles = StyleSheet.create({
   reuploadText: {
     fontSize: 14,
     fontWeight: "600",
-    color: COLORS.accent,
+    color: COLORS.primaryLight,
   },
-  // Industry Fit
   industryCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
@@ -563,7 +565,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.border,
+    backgroundColor: COLORS.surfaceElevated,
     marginHorizontal: 10,
   },
   barFill: {
@@ -576,7 +578,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "right",
   },
-  // Insights
   insightsRow: {
     flexDirection: "row",
     gap: 10,
@@ -586,13 +587,13 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     padding: 16,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   strengthsCard: {
-    borderColor: "rgba(34, 197, 94, 0.25)",
-    backgroundColor: "rgba(34, 197, 94, 0.07)",
+    borderColor: "rgba(16, 185, 129, 0.25)",
+    backgroundColor: "rgba(16, 185, 129, 0.07)",
   },
   improvementsCard: {
     borderColor: "rgba(245, 158, 11, 0.25)",
@@ -629,7 +630,6 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     lineHeight: 18,
   },
-  // Quick Actions
   sectionTitle: {
     fontSize: 17,
     fontWeight: "700",
@@ -643,7 +643,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
   },
   gridItem: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -651,8 +651,15 @@ const styles = StyleSheet.create({
     height: CARD_WIDTH,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 6,
+  },
+  gridIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   gridLabel: {
     fontSize: 11,

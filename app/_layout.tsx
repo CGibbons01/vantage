@@ -11,7 +11,6 @@ import { useNetworkState } from "expo-network";
 import { isOnboardingComplete } from "@/utils/onboardingStorage";
 import {
   DarkTheme,
-  DefaultTheme,
   Theme,
   ThemeProvider,
 } from "@react-navigation/native";
@@ -23,12 +22,22 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 
 SplashScreen.preventAutoHideAsync();
 
-// Routes that are only accessible when NOT authenticated
 const UNAUTH_ONLY_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/welcome"];
-// Routes that are accessible regardless of auth state
 const PUBLIC_ROUTES = ["/privacy", "/paywall"];
-// Onboarding is special — accessible only when authenticated but onboarding not done
 const ONBOARDING_ROUTE = "/onboarding";
+
+const PremiumDarkTheme: Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#0D0B1E',
+    card: '#161230',
+    text: '#F0EEFF',
+    border: 'rgba(124, 58, 237, 0.2)',
+    primary: '#7C3AED',
+    notification: '#EC4899',
+  },
+};
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -36,24 +45,21 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Only check onboarding once we know the user is logged in
     if (!loading && user) {
       isOnboardingComplete().then((done) => {
         console.log("[AuthGuard] onboarding complete:", done);
         setOnboardingDone(done);
       });
     } else if (!loading && !user) {
-      // No user — reset so next login re-checks
       setOnboardingDone(null);
     }
   }, [loading, user]);
 
-  // Show spinner while auth state is loading
   if (loading) {
     console.log("[AuthGuard] Auth loading — showing spinner");
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F172A" }}>
-        <ActivityIndicator size="large" color="#F59E0B" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0D0B1E" }}>
+        <ActivityIndicator size="large" color="#7C3AED" />
       </View>
     );
   }
@@ -61,58 +67,46 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const isUnauthOnly = UNAUTH_ONLY_ROUTES.some((r) => pathname.startsWith(r));
   const isPublic = PUBLIC_ROUTES.some((r) => pathname.startsWith(r));
   const isOnboarding = pathname.startsWith(ONBOARDING_ROUTE);
-  const isInTabs = pathname.startsWith("/(tabs)") || pathname === "/";
 
-  // ── No user ──────────────────────────────────────────────────────────────
   if (!user) {
-    // Allow unauth-only routes and public routes
     if (isUnauthOnly || isPublic) {
       return <>{children}</>;
     }
-    // Anything else (tabs, onboarding) → send to welcome
     console.log("[AuthGuard] No user on protected route, redirecting to /welcome");
     return <Redirect href="/welcome" />;
   }
 
-  // ── User is logged in ─────────────────────────────────────────────────────
-  // Redirect away from unauth-only routes (welcome, auth-screen, etc.)
   if (isUnauthOnly) {
     console.log("[AuthGuard] Authenticated user on unauth route, redirecting to /(tabs)");
     return <Redirect href="/(tabs)" />;
   }
 
-  // Allow public routes regardless
   if (isPublic) {
     return <>{children}</>;
   }
 
-  // Wait for onboarding check before deciding
   if (onboardingDone === null) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F172A" }}>
-        <ActivityIndicator size="large" color="#F59E0B" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0D0B1E" }}>
+        <ActivityIndicator size="large" color="#7C3AED" />
       </View>
     );
   }
 
-  // Onboarding not done → send to onboarding (unless already there)
   if (!onboardingDone && !isOnboarding) {
     console.log("[AuthGuard] Onboarding not complete, redirecting to /onboarding");
     return <Redirect href="/onboarding" />;
   }
 
-  // Onboarding done but user is on the onboarding screen → send to tabs
   if (onboardingDone && isOnboarding) {
     console.log("[AuthGuard] Onboarding already done, redirecting to /(tabs)");
     return <Redirect href="/(tabs)" />;
   }
 
-  // All good — render the requested screen
   return <>{children}</>;
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const networkState = useNetworkState();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
@@ -132,41 +126,28 @@ export default function RootLayout() {
 
   if (!loaded) return null;
 
-  const CustomDarkTheme: Theme = {
-    ...DarkTheme,
-    colors: {
-      primary: "#F59E0B",
-      background: "#0F172A",
-      card: "#1E293B",
-      text: "#F8FAFC",
-      border: "#334155",
-      notification: "#EF4444",
-    },
-  };
-
-  const CustomDefaultTheme: Theme = {
-    ...DefaultTheme,
-    colors: {
-      primary: "#F59E0B",
-      background: "#0F172A",
-      card: "#1E293B",
-      text: "#F8FAFC",
-      border: "#334155",
-      notification: "#EF4444",
-    },
-  };
-
   return (
     <AuthProvider>
       <SubscriptionProvider>
         <NotificationProvider>
-          <ThemeProvider value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}>
+          <ThemeProvider value={PremiumDarkTheme}>
             <SafeAreaProvider>
               <WidgetProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <StatusBar style="light" animated />
                   <AuthGuard>
-                    <Stack screenOptions={{ headerShown: false }}>
+                    <Stack
+                      screenOptions={{
+                        headerShown: false,
+                        animation: 'slide_from_right',
+                        animationDuration: 300,
+                        contentStyle: { backgroundColor: '#0D0B1E' },
+                        headerStyle: { backgroundColor: '#0D0B1E' },
+                        headerTintColor: '#F0EEFF',
+                        headerTitleStyle: { color: '#F0EEFF', fontWeight: '600' },
+                        headerShadowVisible: false,
+                      }}
+                    >
                       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                       <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
                       <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
@@ -180,19 +161,18 @@ export default function RootLayout() {
                           headerShown: true,
                           headerTitle: "Privacy Policy",
                           headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: "#0F2B5B" },
-                          headerTintColor: "#F8FAFC",
+                          headerStyle: { backgroundColor: '#0D0B1E' },
+                          headerTintColor: '#F0EEFF',
                         }}
                       />
-
                       <Stack.Screen
                         name="job/[id]"
                         options={{
                           headerShown: true,
                           headerTitle: "Job Details",
                           headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: "#0F172A" },
-                          headerTintColor: "#F8FAFC",
+                          headerStyle: { backgroundColor: '#0D0B1E' },
+                          headerTintColor: '#F0EEFF',
                         }}
                       />
                       <Stack.Screen
@@ -201,8 +181,8 @@ export default function RootLayout() {
                           headerShown: true,
                           headerTitle: "Edit Profile",
                           headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: "#0F172A" },
-                          headerTintColor: "#F8FAFC",
+                          headerStyle: { backgroundColor: '#0D0B1E' },
+                          headerTintColor: '#F0EEFF',
                         }}
                       />
                     </Stack>

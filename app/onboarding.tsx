@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -109,12 +110,23 @@ export default function OnboardingScreen() {
   const optionCards = [];
   for (const option of question.options) {
     optionCards.push(
-      <OptionCard key={option.id} emoji={option.emoji} label={option.label} selected={selectedOption === option.id} onPress={() => handleSelect(option.id)} />
+      <OptionCard
+        key={option.id}
+        emoji={option.emoji}
+        label={option.label}
+        selected={selectedOption === option.id}
+        onPress={() => handleSelect(option.id)}
+      />
     );
   }
 
+  const continueDisabled = !selectedOption;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Background glow */}
+      <View style={styles.glowOrb} />
+
       <View style={styles.header}>
         {!isFirstStep ? (
           <Pressable onPress={goBack} style={styles.backButton} hitSlop={12}>
@@ -136,7 +148,7 @@ export default function OnboardingScreen() {
           <Text style={[styles.title, { color: colors.text }]}>
             {question.title}
           </Text>
-          <Text style={[styles.subtitle, { color: colors.text + "99" }]}>
+          <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
             {question.subtitle}
           </Text>
         </View>
@@ -149,18 +161,19 @@ export default function OnboardingScreen() {
       <View style={[styles.footer, { paddingBottom: 16 }]}>
         <Pressable
           onPress={handleContinue}
-          disabled={!selectedOption}
-          style={[
-            styles.continueButton,
-            {
-              backgroundColor: colors.primary,
-              opacity: selectedOption ? 1 : 0.4,
-            },
-          ]}
+          disabled={continueDisabled}
+          style={[styles.continueButton, continueDisabled && styles.continueButtonDisabled]}
         >
-          <Text style={styles.continueText}>
-            {isLastStep ? "Get Started" : "Continue"}
-          </Text>
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5', '#EC4899']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.continueGradient}
+          >
+            <Text style={styles.continueText}>
+              {isLastStep ? "Get Started" : "Continue"}
+            </Text>
+          </LinearGradient>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -170,6 +183,15 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  glowOrb: {
+    position: 'absolute',
+    top: -60,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(124, 58, 237, 0.1)',
   },
   header: {
     flexDirection: "row",
@@ -207,6 +229,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800",
     marginBottom: 8,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 16,
@@ -219,8 +242,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   continueButton: {
-    height: 55,
     borderRadius: 16,
+    overflow: 'hidden',
+    height: 55,
+  },
+  continueButtonDisabled: {
+    opacity: 0.4,
+  },
+  continueGradient: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },

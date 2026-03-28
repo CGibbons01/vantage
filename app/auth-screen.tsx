@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
@@ -14,8 +13,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Lock, User, Eye, EyeOff, Chrome } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
 import { COLORS } from '@/constants/theme';
+import { AnimatedPressable } from '@/components/AnimatedPressable';
 
 type Mode = 'signup' | 'signin';
 
@@ -58,7 +59,6 @@ export default function AuthScreen() {
     setSubmittingEmail(true);
     console.log('[Auth] Attempting sign-up with email:', email);
     try {
-      // signUpWithEmail auto-signs in and calls fetchUser — AuthGuard navigates automatically
       await signUpWithEmail(email.trim(), password, name.trim());
       console.log('[Auth] Sign-up + auto sign-in complete');
     } catch (e: any) {
@@ -131,7 +131,7 @@ export default function AuthScreen() {
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
@@ -141,6 +141,10 @@ export default function AuthScreen() {
       style={{ flex: 1, backgroundColor: COLORS.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      {/* Background glow orbs */}
+      <View style={styles.glowOrbTop} />
+      <View style={styles.glowOrbBottom} />
+
       <ScrollView
         contentContainerStyle={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }]}
         keyboardShouldPersistTaps="handled"
@@ -148,35 +152,53 @@ export default function AuthScreen() {
       >
         {/* Logo / Brand */}
         <View style={styles.brandSection}>
-          <Image
-            source={require('../assets/images/app-icon-lca.png')}
-            style={styles.logoImage}
-            resizeMode="cover"
-          />
+          <View style={styles.logoGlow}>
+            <Image
+              source={require('../assets/images/app-icon-lca.png')}
+              style={styles.logoImage}
+              resizeMode="cover"
+            />
+          </View>
           <Text style={styles.brandTitle}>Vantage AI</Text>
           <Text style={styles.brandSubtitle}>Your AI-powered career companion</Text>
         </View>
 
         {/* Mode Toggle */}
         <View style={styles.toggleRow}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.toggleBtn, isSignUp && styles.toggleBtnActive]}
             onPress={() => switchMode('signup')}
-            activeOpacity={0.8}
           >
-            <Text style={[styles.toggleBtnText, isSignUp && styles.toggleBtnTextActive]}>
-              Create Account
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+            {isSignUp ? (
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.toggleBtnGradient}
+              >
+                <Text style={[styles.toggleBtnText, styles.toggleBtnTextActive]}>Create Account</Text>
+              </LinearGradient>
+            ) : (
+              <Text style={styles.toggleBtnText}>Create Account</Text>
+            )}
+          </AnimatedPressable>
+          <AnimatedPressable
             style={[styles.toggleBtn, !isSignUp && styles.toggleBtnActive]}
             onPress={() => switchMode('signin')}
-            activeOpacity={0.8}
           >
-            <Text style={[styles.toggleBtnText, !isSignUp && styles.toggleBtnTextActive]}>
-              Sign In
-            </Text>
-          </TouchableOpacity>
+            {!isSignUp ? (
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.toggleBtnGradient}
+              >
+                <Text style={[styles.toggleBtnText, styles.toggleBtnTextActive]}>Sign In</Text>
+              </LinearGradient>
+            ) : (
+              <Text style={styles.toggleBtnText}>Sign In</Text>
+            )}
+          </AnimatedPressable>
         </View>
 
         {/* Heading */}
@@ -193,7 +215,7 @@ export default function AuthScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="Full Name"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.textTertiary}
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
@@ -207,7 +229,7 @@ export default function AuthScreen() {
             <TextInput
               style={styles.input}
               placeholder="Email Address"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={COLORS.textTertiary}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -222,14 +244,14 @@ export default function AuthScreen() {
             <TextInput
               style={[styles.input, { flex: 1 }]}
               placeholder="Password"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={COLORS.textTertiary}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               returnKeyType="done"
               onSubmitEditing={primaryBtnAction}
             />
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={() => {
                 console.log('[Auth] Toggle password visibility');
                 setShowPassword(!showPassword);
@@ -240,7 +262,7 @@ export default function AuthScreen() {
                 ? <EyeOff size={18} color={COLORS.textSecondary} />
                 : <Eye size={18} color={COLORS.textSecondary} />
               }
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
 
           {error ? (
@@ -249,17 +271,23 @@ export default function AuthScreen() {
             </View>
           ) : null}
 
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.primaryBtn, anySubmitting && styles.primaryBtnDisabled]}
             onPress={primaryBtnAction}
             disabled={anySubmitting}
-            activeOpacity={0.85}
           >
-            {submittingEmail
-              ? <ActivityIndicator color="#000" size="small" />
-              : <Text style={styles.primaryBtnText}>{primaryBtnLabel}</Text>
-            }
-          </TouchableOpacity>
+            <LinearGradient
+              colors={['#7C3AED', '#4F46E5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.primaryBtnGradient}
+            >
+              {submittingEmail
+                ? <ActivityIndicator color="#FFFFFF" size="small" />
+                : <Text style={styles.primaryBtnText}>{primaryBtnLabel}</Text>
+              }
+            </LinearGradient>
+          </AnimatedPressable>
         </View>
 
         {/* Divider */}
@@ -271,13 +299,11 @@ export default function AuthScreen() {
 
         {/* Social Buttons */}
         <View style={styles.socialButtons}>
-          {/* Apple first — App Store requirement, iOS only */}
           {Platform.OS === 'ios' && (
-            <TouchableOpacity
+            <AnimatedPressable
               style={[styles.socialBtn, submittingApple && styles.socialBtnDisabled]}
               onPress={handleApple}
               disabled={anySubmitting}
-              activeOpacity={0.85}
             >
               {submittingApple
                 ? <ActivityIndicator color={COLORS.text} size="small" />
@@ -288,14 +314,13 @@ export default function AuthScreen() {
                   </>
                 )
               }
-            </TouchableOpacity>
+            </AnimatedPressable>
           )}
 
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.socialBtn, submittingGoogle && styles.socialBtnDisabled]}
             onPress={handleGoogle}
             disabled={anySubmitting}
-            activeOpacity={0.85}
           >
             {submittingGoogle
               ? <ActivityIndicator color={COLORS.text} size="small" />
@@ -306,7 +331,7 @@ export default function AuthScreen() {
                 </>
               )
             }
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -320,20 +345,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  glowOrbTop: {
+    position: 'absolute',
+    top: -100,
+    right: -80,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+  },
+  glowOrbBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: -80,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: 'rgba(236, 72, 153, 0.08)',
+  },
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'transparent',
   },
   brandSection: {
     alignItems: 'center',
     marginBottom: 32,
   },
-  logoImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 16,
+  logoGlow: {
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 12,
     marginBottom: 16,
+  },
+  logoImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
   },
   brandTitle: {
     fontSize: 30,
@@ -348,7 +398,7 @@ const styles = StyleSheet.create({
   },
   toggleRow: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -361,9 +411,15 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
-  toggleBtnActive: {
-    backgroundColor: COLORS.accent,
+  toggleBtnActive: {},
+  toggleBtnGradient: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 9,
   },
   toggleBtnText: {
     fontSize: 14,
@@ -371,7 +427,7 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   toggleBtnTextActive: {
-    color: '#000',
+    color: '#FFFFFF',
   },
   headingSection: {
     marginBottom: 24,
@@ -393,7 +449,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -424,12 +480,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   primaryBtn: {
-    backgroundColor: COLORS.accent,
     borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  primaryBtnGradient: {
     height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 4,
   },
   primaryBtnDisabled: {
     opacity: 0.6,
@@ -437,7 +495,7 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: '#FFFFFF',
   },
   divider: {
     flexDirection: 'row',
@@ -462,7 +520,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     height: 52,
     borderWidth: 1,

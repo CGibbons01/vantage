@@ -1,8 +1,5 @@
 /**
- * Paywall Screen
- *
- * Shows subscription options and handles purchases.
- * On web, displays features and prompts user to download the app.
+ * Paywall Screen — Premium Purple/Pink theme
  */
 
 import React, { useState } from "react";
@@ -24,10 +21,10 @@ import { useRouter } from "expo-router";
 import { PurchasesPackage } from "react-native-purchases";
 
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { COLORS } from "@/constants/theme";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-// Premium features for the paywall
 const FEATURES = [
   {
     icon: "📄",
@@ -51,20 +48,9 @@ const FEATURES = [
   },
 ];
 
-// App colour palette
-const colors = {
-  bg: "#0F2B5B",
-  surface: "#1A3A6B",
-  accent: "#F59E0B",
-  text: "#FFFFFF",
-  textSecondary: "#94A3B8",
-  border: "#1E3A5F",
-};
-
 export default function PaywallScreen() {
   const router = useRouter();
 
-  // Get subscription state and methods from context
   const {
     packages,
     loading,
@@ -83,17 +69,15 @@ export default function PaywallScreen() {
   const [webMockState, setWebMockState] = useState<"idle" | "processing">("idle");
   const [webMockDialogState, setWebMockDialogState] = useState<"hidden" | "selecting" | "failed">("hidden");
 
-  // Update selected package when packages load
   React.useEffect(() => {
     if (packages.length > 0 && !selectedPackage) {
       setSelectedPackage(packages[0]);
     }
   }, [packages, selectedPackage]);
 
-  // Handle purchase
   const handlePurchase = async () => {
     if (!selectedPackage) return;
-
+    console.log('[Paywall] Purchase button pressed:', selectedPackage.identifier);
     try {
       setPurchasing(true);
       const success = await purchasePackage(selectedPackage);
@@ -109,8 +93,8 @@ export default function PaywallScreen() {
     }
   };
 
-  // Handle restore
   const handleRestore = async () => {
+    console.log('[Paywall] Restore purchases pressed');
     try {
       setRestoring(true);
       const restored = await restorePurchases();
@@ -119,10 +103,7 @@ export default function PaywallScreen() {
           { text: "OK", onPress: () => router.replace("/(tabs)/(home)") },
         ]);
       } else {
-        Alert.alert(
-          "No Purchases Found",
-          "We couldn't find any previous purchases."
-        );
+        Alert.alert("No Purchases Found", "We couldn't find any previous purchases.");
       }
     } catch (error: any) {
       Alert.alert("Restore Failed", error.message || "Please try again.");
@@ -136,23 +117,18 @@ export default function PaywallScreen() {
     router.replace("/(tabs)");
   };
 
-  // Handle web mock purchase (replicates RevenueCat test store flow for web preview)
-  // Note: Alert.alert with multiple buttons silently fails on React Native Web,
-  // so we use a custom View-based dialog overlay instead.
   const handleWebMockPurchase = async () => {
     if (!selectedPackage) return;
+    console.log('[Paywall] Web mock purchase initiated');
     setWebMockState("processing");
     await new Promise((resolve) => setTimeout(resolve, 400));
     setWebMockState("idle");
     setWebMockDialogState("selecting");
   };
 
-  // Handle app store links for web
   const handleDownloadApp = () => {
     const iosUrl = "https://apps.apple.com/app/vantage-ai-recruitment";
     const androidUrl = "https://play.google.com/store/apps/details?id=com.vantage.airecruitment";
-
-    // On web, we can't detect which device the user has, so show both options
     Alert.alert(
       "Download the App",
       "To subscribe, please download our app from your device's app store.",
@@ -164,63 +140,68 @@ export default function PaywallScreen() {
     );
   };
 
-  // Already subscribed - show celebration confirmation
   if (isSubscribed) {
     return (
       <View style={styles.subscribedContainer}>
         <LinearGradient
-          colors={["#0F2B5B", "#1A3A6B", "#0F2B5B"]}
+          colors={['#0D0B1E', '#1E1A3A', '#0D0B1E']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.subscribedGradient}
         >
-          {/* Decorative floating orbs */}
           <View style={[styles.floatingOrb, styles.orb1]} />
           <View style={[styles.floatingOrb, styles.orb2]} />
           <View style={[styles.floatingOrb, styles.orb3]} />
 
           <SafeAreaView edges={["top", "bottom"]} style={styles.subscribedSafeArea}>
-            {/* Close button */}
             <TouchableOpacity style={styles.subscribedCloseButton} onPress={handleClose}>
               <Text style={styles.subscribedCloseText}>✕</Text>
             </TouchableOpacity>
 
             <View style={styles.subscribedContent}>
-              {/* Celebration icon with glow */}
               <View style={styles.celebrationIconContainer}>
                 <View style={styles.celebrationGlow} />
                 <Text style={styles.celebrationIcon}>🎉</Text>
               </View>
 
-              {/* PRO MEMBER badge */}
-              <View style={styles.proMemberBadge}>
+              <LinearGradient
+                colors={['rgba(124, 58, 237, 0.25)', 'rgba(236, 72, 153, 0.25)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.proMemberBadge}
+              >
                 <Text style={styles.proMemberText}>PRO MEMBER</Text>
-              </View>
+              </LinearGradient>
 
-              {/* Title */}
               <Text style={styles.subscribedTitle}>You're All Set!</Text>
-              <Text style={styles.subscribedSubtitle}>
-                Welcome to the premium experience
-              </Text>
+              <Text style={styles.subscribedSubtitle}>Welcome to the premium experience</Text>
 
-              {/* Features card */}
               <View style={styles.featuresCard}>
                 <Text style={styles.featuresCardTitle}>Unlocked Features</Text>
                 {FEATURES.slice(0, 3).map((feature, index) => (
                   <View key={index} style={styles.featureCheckRow}>
-                    <View style={styles.checkCircle}>
+                    <LinearGradient
+                      colors={['#7C3AED', '#EC4899']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.checkCircle}
+                    >
                       <Text style={styles.checkMark}>✓</Text>
-                    </View>
+                    </LinearGradient>
                     <Text style={styles.featureCheckText}>{feature.title}</Text>
                   </View>
                 ))}
               </View>
 
-              {/* Start Exploring button */}
               <TouchableOpacity style={styles.exploreButton} onPress={handleClose}>
-                <View style={styles.exploreButtonInner}>
+                <LinearGradient
+                  colors={['#7C3AED', '#4F46E5', '#EC4899']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.exploreButtonInner}
+                >
                   <Text style={styles.exploreButtonText}>Start Exploring</Text>
-                </View>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
           </SafeAreaView>
@@ -229,32 +210,20 @@ export default function PaywallScreen() {
     );
   }
 
-  // Feature icon background colors (amber tint for all)
-  const featureIconColors = [
-    "rgba(245, 158, 11, 0.2)",
-    "rgba(245, 158, 11, 0.2)",
-    "rgba(245, 158, 11, 0.2)",
-    "rgba(245, 158, 11, 0.2)",
-  ];
-
-  // Loading state
   if (loading) {
     return (
       <View style={styles.container}>
         <LinearGradient
-          colors={["#0F2B5B", "#1A3A6B", "#0F2B5B"]}
+          colors={['#0D0B1E', '#1E1A3A', '#0D0B1E']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.gradientBackground}
         >
-          {/* Decorative floating orbs */}
           <View style={[styles.floatingOrb, styles.orb1]} />
           <View style={[styles.floatingOrb, styles.orb2]} />
-          <View style={[styles.floatingOrb, styles.orb3]} />
-
           <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
             <View style={styles.centeredContainer}>
-              <ActivityIndicator size="large" color="#fff" />
+              <ActivityIndicator size="large" color={COLORS.primaryLight} />
               <Text style={styles.loadingText}>Loading...</Text>
             </View>
           </SafeAreaView>
@@ -266,12 +235,11 @@ export default function PaywallScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={["#0F2B5B", "#1A3A6B", "#0F2B5B"]}
+        colors={['#0D0B1E', '#1E1A3A', '#0D0B1E']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.gradientBackground}
       >
-        {/* Decorative floating orbs */}
         <View style={[styles.floatingOrb, styles.orb1]} />
         <View style={[styles.floatingOrb, styles.orb2]} />
         <View style={[styles.floatingOrb, styles.orb3]} />
@@ -284,29 +252,36 @@ export default function PaywallScreen() {
           >
             {/* Header */}
             <View style={styles.header}>
-              {/* Premium badge */}
-              <View style={styles.premiumBadge}>
+              <LinearGradient
+                colors={['rgba(124, 58, 237, 0.25)', 'rgba(236, 72, 153, 0.25)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.premiumBadge}
+              >
                 <Text style={styles.premiumBadgeText}>PREMIUM</Text>
-              </View>
+              </LinearGradient>
               <Text style={styles.title}>Upgrade to Premium</Text>
               <Text style={styles.subtitle}>
                 Unlock all features and get the most out of the app
               </Text>
             </View>
 
-            {/* Features List - Glass Card */}
+            {/* Features List */}
             <View style={styles.featuresCard}>
               <Text style={styles.featuresCardTitle}>What You'll Get</Text>
               {FEATURES.map((feature, index) => (
                 <View key={index} style={styles.featureRow}>
-                  <View style={[styles.featureIcon, { backgroundColor: featureIconColors[index % featureIconColors.length] }]}>
+                  <LinearGradient
+                    colors={index % 2 === 0 ? ['#7C3AED', '#4F46E5'] : ['#EC4899', '#7C3AED']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.featureIcon}
+                  >
                     <Text style={styles.featureIconText}>{feature.icon}</Text>
-                  </View>
+                  </LinearGradient>
                   <View style={styles.featureText}>
                     <Text style={styles.featureTitle}>{feature.title}</Text>
-                    <Text style={styles.featureDescription}>
-                      {feature.description}
-                    </Text>
+                    <Text style={styles.featureDescription}>{feature.description}</Text>
                   </View>
                 </View>
               ))}
@@ -320,30 +295,38 @@ export default function PaywallScreen() {
                   return (
                     <TouchableOpacity
                       key={pkg.identifier}
-                      style={[
-                        styles.packageCard,
-                        isSelected && styles.packageCardSelected,
-                      ]}
-                      onPress={() => setSelectedPackage(pkg)}
+                      style={[styles.packageCard, isSelected && styles.packageCardSelected]}
+                      onPress={() => {
+                        console.log('[Paywall] Package selected:', pkg.identifier);
+                        setSelectedPackage(pkg);
+                      }}
                     >
-                      {isSelected && <View style={styles.selectedIndicator} />}
+                      {isSelected && (
+                        <LinearGradient
+                          colors={['#7C3AED', '#EC4899']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={styles.selectedIndicator}
+                        />
+                      )}
                       <View style={styles.packageHeader}>
                         <Text style={styles.packageTitle}>{pkg.product.title}</Text>
                         {isSelected && (
-                          <View style={styles.checkmarkCircle}>
+                          <LinearGradient
+                            colors={['#7C3AED', '#EC4899']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.checkmarkCircle}
+                          >
                             <Text style={styles.checkmark}>✓</Text>
-                          </View>
+                          </LinearGradient>
                         )}
                       </View>
                       {pkg.product.priceString ? (
-                        <Text style={styles.packagePrice}>
-                          {pkg.product.priceString}
-                        </Text>
+                        <Text style={styles.packagePrice}>{pkg.product.priceString}</Text>
                       ) : null}
                       {pkg.product.description && (
-                        <Text style={styles.packageDescription}>
-                          {pkg.product.description}
-                        </Text>
+                        <Text style={styles.packageDescription}>{pkg.product.description}</Text>
                       )}
                     </TouchableOpacity>
                   );
@@ -351,9 +334,6 @@ export default function PaywallScreen() {
               </View>
             )}
 
-            {/* No packages available - only show on native */}
-            {/* This appears in standard Expo Go because react-native-purchases */}
-            {/* native module is not bundled in Expo Go. Use a dev build to test purchases. */}
             {!isWeb && packages.length === 0 && !loading && (
               <View style={styles.noPackagesContainer}>
                 <Text style={styles.noPackagesText}>
@@ -367,6 +347,7 @@ export default function PaywallScreen() {
                   <TouchableOpacity
                     style={styles.devMockButton}
                     onPress={async () => {
+                      console.log('[Paywall] Dev simulate purchase pressed');
                       await mockNativePurchase();
                       router.replace("/(tabs)/(home)");
                     }}
@@ -380,85 +361,74 @@ export default function PaywallScreen() {
 
           {/* Bottom Actions */}
           <View style={styles.bottomActions}>
-            {/* Web: mock test-store flow that mirrors Expo Go behavior */}
             {isWeb ? (
               <>
                 <TouchableOpacity
-                  style={[
-                    styles.primaryButton,
-                    (!selectedPackage || webMockState === "processing") &&
-                      styles.buttonDisabled,
-                  ]}
+                  style={[styles.primaryButton, (!selectedPackage || webMockState === "processing") && styles.buttonDisabled]}
                   onPress={handleWebMockPurchase}
                   disabled={!selectedPackage || webMockState === "processing"}
                 >
-                  {webMockState === "processing" ? (
-                    <ActivityIndicator color="#0F2B5B" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>
-                      {selectedPackage
-                        ? selectedPackage.product.priceString
-                          ? `Subscribe for ${selectedPackage.product.priceString}`
-                          : "Subscribe"
-                        : "Select a plan"}
-                    </Text>
-                  )}
+                  <LinearGradient
+                    colors={['#7C3AED', '#4F46E5', '#EC4899']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.primaryButtonGradient}
+                  >
+                    {webMockState === "processing" ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        {selectedPackage
+                          ? selectedPackage.product.priceString
+                            ? `Subscribe for ${selectedPackage.product.priceString}`
+                            : "Subscribe"
+                          : "Select a plan"}
+                      </Text>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={handleRestore}
-                  disabled={restoring}
-                >
-                  {restoring ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.secondaryButtonText}>
-                      Restore Purchases
-                    </Text>
-                  )}
+                <TouchableOpacity style={styles.secondaryButton} onPress={handleRestore} disabled={restoring}>
+                  {restoring
+                    ? <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                    : <Text style={styles.secondaryButtonText}>Restore Purchases</Text>
+                  }
                 </TouchableOpacity>
-                <Text style={styles.legalText}>
-                  Preview mode — purchases available in the mobile app
-                </Text>
+                <Text style={styles.legalText}>Preview mode — purchases available in the mobile app</Text>
               </>
             ) : (
               <>
-                {/* Native: Subscribe Button */}
                 <TouchableOpacity
-                  style={[
-                    styles.primaryButton,
-                    (!selectedPackage || purchasing) && styles.buttonDisabled,
-                  ]}
+                  style={[styles.primaryButton, (!selectedPackage || purchasing) && styles.buttonDisabled]}
                   onPress={handlePurchase}
                   disabled={!selectedPackage || purchasing}
                 >
-                  {purchasing ? (
-                    <ActivityIndicator color="#0F2B5B" />
-                  ) : (
-                    <Text style={styles.primaryButtonText}>
-                      {selectedPackage
-                        ? (selectedPackage.product.priceString
-                            ? `Subscribe for ${selectedPackage.product.priceString}`
-                            : "Subscribe")
-                        : "Select a plan"}
-                    </Text>
-                  )}
+                  <LinearGradient
+                    colors={['#7C3AED', '#4F46E5', '#EC4899']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.primaryButtonGradient}
+                  >
+                    {purchasing ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        {selectedPackage
+                          ? (selectedPackage.product.priceString
+                              ? `Subscribe for ${selectedPackage.product.priceString}`
+                              : "Subscribe")
+                          : "Select a plan"}
+                      </Text>
+                    )}
+                  </LinearGradient>
                 </TouchableOpacity>
 
-                {/* Restore Button */}
-                <TouchableOpacity
-                  style={styles.secondaryButton}
-                  onPress={handleRestore}
-                  disabled={restoring}
-                >
-                  {restoring ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.secondaryButtonText}>Restore Purchases</Text>
-                  )}
+                <TouchableOpacity style={styles.secondaryButton} onPress={handleRestore} disabled={restoring}>
+                  {restoring
+                    ? <ActivityIndicator size="small" color={COLORS.textSecondary} />
+                    : <Text style={styles.secondaryButtonText}>Restore Purchases</Text>
+                  }
                 </TouchableOpacity>
 
-                {/* Legal Text - Required by App Store */}
                 <Text style={styles.legalText}>
                   Payment will be charged to your{" "}
                   {Platform.OS === "ios" ? "Apple ID" : "Google Play"} account.
@@ -471,8 +441,6 @@ export default function PaywallScreen() {
         </SafeAreaView>
       </LinearGradient>
 
-      {/* Web Mock Purchase Dialog - View-based overlay (Alert.alert with multiple buttons */}
-      {/* silently fails on React Native Web - callbacks never fire) */}
       {isWeb && webMockDialogState !== "hidden" && (
         <View style={styles.webDialogOverlay}>
           <View style={styles.webDialogBox}>
@@ -480,20 +448,11 @@ export default function PaywallScreen() {
               <>
                 <Text style={styles.webDialogTitle}>Test Purchase</Text>
                 <Text style={styles.webDialogBody}>
-                  {`⚠️ This is a test purchase and should only be used during development. In production, use an Apple/Google API key from RevenueCat.
-
-Package ID: ${selectedPackage?.identifier}
-Title: ${selectedPackage?.product.title}
-Price: ${selectedPackage?.product.priceString || "N/A"}`}
+                  {`⚠️ This is a test purchase and should only be used during development.\n\nPackage ID: ${selectedPackage?.identifier}\nTitle: ${selectedPackage?.product.title}\nPrice: ${selectedPackage?.product.priceString || "N/A"}`}
                 </Text>
                 <View style={styles.webDialogDivider} />
-                <TouchableOpacity
-                  style={styles.webDialogButton}
-                  onPress={() => setWebMockDialogState("failed")}
-                >
-                  <Text style={[styles.webDialogButtonText, { color: "#EF4444" }]}>
-                    Test Failed Purchase
-                  </Text>
+                <TouchableOpacity style={styles.webDialogButton} onPress={() => setWebMockDialogState("failed")}>
+                  <Text style={[styles.webDialogButtonText, { color: COLORS.error }]}>Test Failed Purchase</Text>
                 </TouchableOpacity>
                 <View style={styles.webDialogDivider} />
                 <TouchableOpacity
@@ -504,35 +463,21 @@ Price: ${selectedPackage?.product.priceString || "N/A"}`}
                     router.replace("/(tabs)/(home)");
                   }}
                 >
-                  <Text style={[styles.webDialogButtonText, { color: "#007AFF" }]}>
-                    Test Valid Purchase
-                  </Text>
+                  <Text style={[styles.webDialogButtonText, { color: COLORS.primaryLight }]}>Test Valid Purchase</Text>
                 </TouchableOpacity>
                 <View style={styles.webDialogDivider} />
-                <TouchableOpacity
-                  style={styles.webDialogButton}
-                  onPress={() => setWebMockDialogState("hidden")}
-                >
-                  <Text style={[styles.webDialogButtonText, { color: "#007AFF" }]}>
-                    Cancel
-                  </Text>
+                <TouchableOpacity style={styles.webDialogButton} onPress={() => setWebMockDialogState("hidden")}>
+                  <Text style={[styles.webDialogButtonText, { color: COLORS.primaryLight }]}>Cancel</Text>
                 </TouchableOpacity>
               </>
             )}
             {webMockDialogState === "failed" && (
               <>
                 <Text style={styles.webDialogTitle}>Purchase Failed</Text>
-                <Text style={styles.webDialogBody}>
-                  Test purchase failure: no real transaction occurred
-                </Text>
+                <Text style={styles.webDialogBody}>Test purchase failure: no real transaction occurred</Text>
                 <View style={styles.webDialogDivider} />
-                <TouchableOpacity
-                  style={styles.webDialogButton}
-                  onPress={() => setWebMockDialogState("hidden")}
-                >
-                  <Text style={[styles.webDialogButtonText, { color: "#007AFF" }]}>
-                    OK
-                  </Text>
+                <TouchableOpacity style={styles.webDialogButton} onPress={() => setWebMockDialogState("hidden")}>
+                  <Text style={[styles.webDialogButtonText, { color: COLORS.primaryLight }]}>OK</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -566,7 +511,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     marginTop: 16,
   },
   scrollView: {
@@ -582,47 +527,46 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   premiumBadge: {
-    backgroundColor: "rgba(245, 158, 11, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.4)",
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.4)',
   },
   premiumBadgeText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#F59E0B",
+    color: COLORS.primaryLight,
     letterSpacing: 1.5,
   },
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#FFFFFF",
+    color: COLORS.text,
     textAlign: "center",
   },
   subtitle: {
     fontSize: 16,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     textAlign: "center",
     marginTop: 8,
   },
   featuresCard: {
-    backgroundColor: "#1A3A6B",
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 20,
     padding: 20,
     marginBottom: 24,
     width: "100%",
     borderLeftWidth: 3,
-    borderLeftColor: "#F59E0B",
+    borderLeftColor: COLORS.primary,
     borderWidth: 1,
-    borderColor: "#1E3A5F",
+    borderColor: COLORS.border,
   },
   featuresCardTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#F59E0B",
+    color: COLORS.primaryLight,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 16,
@@ -650,11 +594,11 @@ const styles = StyleSheet.create({
   featureTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: COLORS.text,
   },
   featureDescription: {
     fontSize: 14,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     marginTop: 2,
   },
   packagesContainer: {
@@ -665,15 +609,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#1E3A5F",
-    backgroundColor: "#1A3A6B",
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceSecondary,
     overflow: "hidden",
     width: "100%",
   },
   packageCardSelected: {
-    borderColor: "#F59E0B",
+    borderColor: COLORS.primary,
     borderWidth: 2,
-    backgroundColor: "#1A3A6B",
   },
   selectedIndicator: {
     position: "absolute",
@@ -681,7 +624,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: "#F59E0B",
   },
   packageHeader: {
     flexDirection: "row",
@@ -691,30 +633,29 @@ const styles = StyleSheet.create({
   packageTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: COLORS.text,
   },
   checkmarkCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(245, 158, 11, 0.25)",
     justifyContent: "center",
     alignItems: "center",
   },
   checkmark: {
-    fontSize: 14,
-    color: "#F59E0B",
+    fontSize: 13,
+    color: "#FFFFFF",
     fontWeight: "bold",
   },
   packagePrice: {
     fontSize: 24,
     fontWeight: "bold",
-    color: "#F59E0B",
+    color: COLORS.primaryLight,
     marginTop: 8,
   },
   packageDescription: {
     fontSize: 14,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     marginTop: 4,
   },
   noPackagesContainer: {
@@ -723,7 +664,7 @@ const styles = StyleSheet.create({
   },
   noPackagesText: {
     fontSize: 16,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     textAlign: "center",
   },
   devMockButton: {
@@ -732,12 +673,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.4)",
+    borderColor: COLORS.border,
     borderStyle: "dashed",
     alignItems: "center",
   },
   devMockButtonText: {
-    color: "#F59E0B",
+    color: COLORS.primaryLight,
     fontSize: 13,
     textAlign: "center",
   },
@@ -748,18 +689,16 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   primaryButton: {
-    backgroundColor: "#F59E0B",
-    paddingVertical: 16,
     borderRadius: 16,
+    overflow: 'hidden',
+  },
+  primaryButtonGradient: {
+    paddingVertical: 16,
     alignItems: "center",
-    shadowColor: "#F59E0B",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    justifyContent: "center",
   },
   primaryButtonText: {
-    color: "#0F2B5B",
+    color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "bold",
   },
@@ -772,40 +711,38 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     fontSize: 16,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
   },
   legalText: {
     fontSize: 11,
-    color: "#64748B",
+    color: COLORS.textMuted,
     textAlign: "center",
     lineHeight: 16,
   },
-
-  // Web mock purchase dialog (View-based, since Alert.alert with multiple buttons fails on web)
   webDialogOverlay: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 100,
   },
   webDialogBox: {
-    backgroundColor: "#1A3A6B",
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 14,
     width: "85%",
     maxWidth: 400,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#1E3A5F",
+    borderColor: COLORS.border,
   },
   webDialogTitle: {
     fontSize: 17,
     fontWeight: "600",
-    color: "#FFFFFF",
+    color: COLORS.text,
     textAlign: "center",
     paddingHorizontal: 16,
     paddingTop: 20,
@@ -813,7 +750,7 @@ const styles = StyleSheet.create({
   },
   webDialogBody: {
     fontSize: 13,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     textAlign: "center",
     paddingHorizontal: 16,
     paddingBottom: 20,
@@ -821,7 +758,7 @@ const styles = StyleSheet.create({
   },
   webDialogDivider: {
     height: 1,
-    backgroundColor: "#1E3A5F",
+    backgroundColor: COLORS.border,
   },
   webDialogButton: {
     paddingVertical: 14,
@@ -830,8 +767,6 @@ const styles = StyleSheet.create({
   webDialogButtonText: {
     fontSize: 17,
   },
-
-  // Subscribed celebration styles
   subscribedContainer: {
     flex: 1,
     width: Dimensions.get("window").width,
@@ -848,25 +783,27 @@ const styles = StyleSheet.create({
   floatingOrb: {
     position: "absolute",
     borderRadius: 999,
-    backgroundColor: "rgba(245, 158, 11, 0.06)",
   },
   orb1: {
-    width: 200,
-    height: 200,
-    top: -50,
-    right: -50,
+    width: 220,
+    height: 220,
+    top: -60,
+    right: -60,
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
   },
   orb2: {
-    width: 150,
-    height: 150,
+    width: 160,
+    height: 160,
     bottom: 100,
-    left: -40,
+    left: -50,
+    backgroundColor: 'rgba(236, 72, 153, 0.1)',
   },
   orb3: {
-    width: 100,
-    height: 100,
+    width: 110,
+    height: 110,
     top: SCREEN_HEIGHT * 0.3,
     right: 20,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
   },
   subscribedCloseButton: {
     position: "absolute",
@@ -876,15 +813,15 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    backgroundColor: COLORS.primaryMuted,
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.3)",
+    borderColor: COLORS.border,
     justifyContent: "center",
     alignItems: "center",
   },
   subscribedCloseText: {
     fontSize: 18,
-    color: "#F59E0B",
+    color: COLORS.primaryLight,
     fontWeight: "600",
   },
   subscribedContent: {
@@ -902,7 +839,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    backgroundColor: 'rgba(124, 58, 237, 0.2)',
     top: -20,
     left: -20,
   },
@@ -910,30 +847,29 @@ const styles = StyleSheet.create({
     fontSize: 80,
   },
   proMemberBadge: {
-    backgroundColor: "rgba(245, 158, 11, 0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.4)",
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(124, 58, 237, 0.4)',
   },
   proMemberText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#F59E0B",
+    color: COLORS.primaryLight,
     letterSpacing: 1.5,
   },
   subscribedTitle: {
     fontSize: 32,
     fontWeight: "bold",
-    color: "#FFFFFF",
+    color: COLORS.text,
     textAlign: "center",
     marginBottom: 8,
   },
   subscribedSubtitle: {
     fontSize: 16,
-    color: "#94A3B8",
+    color: COLORS.textSecondary,
     textAlign: "center",
     marginBottom: 32,
   },
@@ -946,19 +882,18 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "rgba(245, 158, 11, 0.2)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
   checkMark: {
-    fontSize: 14,
-    color: "#F59E0B",
+    fontSize: 13,
+    color: "#FFFFFF",
     fontWeight: "bold",
   },
   featureCheckText: {
     fontSize: 16,
-    color: "#FFFFFF",
+    color: COLORS.text,
     fontWeight: "500",
   },
   exploreButton: {
@@ -967,13 +902,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   exploreButtonInner: {
-    backgroundColor: "#F59E0B",
     paddingVertical: 18,
     alignItems: "center",
     borderRadius: 16,
   },
   exploreButtonText: {
-    color: "#0F2B5B",
+    color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "bold",
   },
