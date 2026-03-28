@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bell, X, CheckCircle } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { COLORS } from '@/constants/theme';
@@ -64,8 +65,8 @@ function ToggleRow({
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: COLORS.border, true: COLORS.accentMuted }}
-        thumbColor={value ? COLORS.accent : COLORS.textMuted}
+        trackColor={{ false: COLORS.border, true: COLORS.primaryMuted }}
+        thumbColor={value ? COLORS.primaryLight : COLORS.textMuted}
         ios_backgroundColor={COLORS.border}
       />
     </View>
@@ -157,7 +158,7 @@ export default function NotificationsScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.text} />
         </Pressable>
         <View style={styles.headerIconCircle}>
-          <Bell size={20} color={COLORS.accent} />
+          <Bell size={20} color={COLORS.primaryLight} />
         </View>
         <Text style={styles.headerTitle}>Job Alerts</Text>
       </View>
@@ -244,7 +245,7 @@ export default function NotificationsScreen() {
                   style={styles.chipRemove}
                   accessibilityLabel={`Remove ${kw}`}
                 >
-                  <X size={12} color={COLORS.accent} />
+                  <X size={12} color={COLORS.primaryLight} />
                 </AnimatedPressable>
               </View>
             ))}
@@ -257,14 +258,21 @@ export default function NotificationsScreen() {
           onPress={handleSave}
           disabled={saving}
         >
-          {saved ? (
-            <>
-              <CheckCircle size={18} color="#000" />
-              <Text style={styles.saveBtnText}>Preferences saved!</Text>
-            </>
-          ) : (
-            <Text style={styles.saveBtnText}>Save Preferences</Text>
-          )}
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.saveBtnGradient}
+          >
+            {saved ? (
+              <>
+                <CheckCircle size={18} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>Preferences saved!</Text>
+              </>
+            ) : (
+              <Text style={styles.saveBtnText}>Save Preferences</Text>
+            )}
+          </LinearGradient>
         </AnimatedPressable>
       </ScrollView>
     </View>
@@ -287,7 +295,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -304,12 +312,11 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
   },
   toggleRow: {
     flexDirection: 'row',
@@ -325,17 +332,17 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
   },
-  freqBtnActive: { backgroundColor: COLORS.accentMuted, borderColor: 'rgba(245,158,11,0.4)' },
+  freqBtnActive: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary },
   freqBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
-  freqBtnTextActive: { color: COLORS.accent },
+  freqBtnTextActive: { color: COLORS.primaryLight },
   keywordInputRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -345,39 +352,40 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   addBtn: {
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: COLORS.border,
   },
-  addBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.accent },
+  addBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.primaryLight },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
   },
-  chipText: { fontSize: 13, fontWeight: '500', color: COLORS.accent },
+  chipText: { fontSize: 13, fontWeight: '500', color: COLORS.primaryLight },
   chipRemove: { padding: 2 },
   saveBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 28,
+  },
+  saveBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
     height: 52,
-    marginTop: 28,
-    boxShadow: '0 4px 16px rgba(245,158,11,0.3)',
   },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });

@@ -15,6 +15,7 @@ import { Briefcase, Trash2, ChevronRight, ClipboardList } from 'lucide-react-nat
 import { authenticatedGet, authenticatedDelete } from '@/utils/api';
 import { COLORS, STATUS_COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface Application {
   id: string;
@@ -109,7 +110,7 @@ export default function ApplicationsScreen() {
   if (loading) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <ActivityIndicator size="large" color={COLORS.primaryLight} />
       </View>
     );
   }
@@ -129,7 +130,7 @@ export default function ApplicationsScreen() {
         {STATUS_FILTERS.map((filter) => {
           const isActive = activeFilter === filter;
           return (
-            <TouchableOpacity
+            <AnimatedPressable
               key={filter}
               style={[styles.filterTab, isActive && styles.filterTabActive]}
               onPress={() => {
@@ -140,7 +141,7 @@ export default function ApplicationsScreen() {
               <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
                 {filter}
               </Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           );
         })}
       </View>
@@ -160,8 +161,8 @@ export default function ApplicationsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={COLORS.accent}
-            colors={[COLORS.accent]}
+            tintColor={COLORS.primaryLight}
+            colors={[COLORS.primaryLight]}
           />
         }
         renderItem={({ item }) => (
@@ -174,7 +175,7 @@ export default function ApplicationsScreen() {
           >
             <View style={styles.appCardMain}>
               <View style={styles.appIconCircle}>
-                <Briefcase size={18} color={COLORS.accent} />
+                <Briefcase size={18} color={COLORS.primaryLight} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.appTitle} numberOfLines={1}>{item.job_title}</Text>
@@ -206,7 +207,9 @@ export default function ApplicationsScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <ClipboardList size={48} color={COLORS.textMuted} />
+            <View style={styles.emptyIconCircle}>
+              <ClipboardList size={32} color={COLORS.primaryLight} />
+            </View>
             <Text style={styles.emptyTitle}>
               {activeFilter === 'All' ? 'No applications yet' : `No ${activeFilter.toLowerCase()} applications`}
             </Text>
@@ -220,7 +223,14 @@ export default function ApplicationsScreen() {
                 router.push('/(tabs)/jobs');
               }}
             >
-              <Text style={styles.emptyBtnText}>Search Jobs</Text>
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.emptyBtnGradient}
+              >
+                <Text style={styles.emptyBtnText}>Search Jobs</Text>
+              </LinearGradient>
             </AnimatedPressable>
           </View>
         }
@@ -241,12 +251,12 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
   countBadge: {
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  countText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
+  countText: { fontSize: 13, fontWeight: '700', color: COLORS.primaryLight },
   filterRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -257,16 +267,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   filterTabActive: {
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
   filterTabText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
-  filterTabTextActive: { color: '#000' },
+  filterTabTextActive: { color: '#FFFFFF' },
   errorBanner: {
     marginHorizontal: 20,
     backgroundColor: COLORS.errorMuted,
@@ -279,20 +289,19 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.error, fontSize: 13 },
   listContent: { paddingHorizontal: 20, paddingBottom: 120 },
   appCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   appCardMain: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
   appIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -321,13 +330,29 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 32,
   },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: COLORS.text, marginTop: 16, textAlign: 'center' },
+  emptyIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: COLORS.text, marginTop: 0, textAlign: 'center' },
   emptySubtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 8, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   emptyBtn: {
-    backgroundColor: COLORS.accent,
     borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    overflow: 'hidden',
+    minWidth: 160,
   },
-  emptyBtnText: { fontSize: 14, fontWeight: '700', color: '#000' },
+  emptyBtnGradient: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBtnText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
 });

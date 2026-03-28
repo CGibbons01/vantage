@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MapPin, DollarSign, Tag, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { authenticatedGet, authenticatedPost } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
@@ -103,7 +104,6 @@ export default function JobDetailScreen() {
       const canOpen = await Linking.canOpenURL(job.redirect_url);
       if (canOpen) {
         await Linking.openURL(job.redirect_url);
-        // Mark as applied if saved
         if (savedApplication) {
           try {
             await authenticatedPost(`/api/applications/${savedApplication.id}/status`, { status: 'applied' });
@@ -130,11 +130,12 @@ export default function JobDetailScreen() {
     : null;
 
   const cleanDescription = job?.description?.replace(/<[^>]*>/g, '') ?? '';
+  const companyInitial = (job?.company?.[0] || 'J').toUpperCase();
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <ActivityIndicator size="large" color={COLORS.primaryLight} />
       </View>
     );
   }
@@ -155,11 +156,14 @@ export default function JobDetailScreen() {
       >
         {/* Job Header */}
         <View style={styles.jobHeader}>
-          <View style={styles.companyCircle}>
-            <Text style={styles.companyInitial}>
-              {(job.company?.[0] || 'J').toUpperCase()}
-            </Text>
-          </View>
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.companyCircle}
+          >
+            <Text style={styles.companyInitial}>{companyInitial}</Text>
+          </LinearGradient>
           <Text style={styles.jobTitle}>{job.title}</Text>
           <Text style={styles.jobCompany}>{job.company}</Text>
         </View>
@@ -199,7 +203,7 @@ export default function JobDetailScreen() {
           disabled={saving || !!savedApplication}
         >
           {saving ? (
-            <ActivityIndicator color={COLORS.accent} size="small" />
+            <ActivityIndicator color={COLORS.primaryLight} size="small" />
           ) : savedApplication ? (
             <>
               <BookmarkCheck size={18} color={COLORS.success} />
@@ -207,15 +211,22 @@ export default function JobDetailScreen() {
             </>
           ) : (
             <>
-              <Bookmark size={18} color={COLORS.accent} />
+              <Bookmark size={18} color={COLORS.primaryLight} />
               <Text style={styles.saveBtnText}>Save Job</Text>
             </>
           )}
         </AnimatedPressable>
 
         <AnimatedPressable style={styles.applyBtn} onPress={handleApply}>
-          <ExternalLink size={18} color="#000" />
-          <Text style={styles.applyBtnText}>Apply Now</Text>
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.applyBtnGradient}
+          >
+            <ExternalLink size={18} color="#FFFFFF" />
+            <Text style={styles.applyBtnText}>Apply Now</Text>
+          </LinearGradient>
         </AnimatedPressable>
       </View>
     </View>
@@ -231,22 +242,19 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 16,
-    backgroundColor: COLORS.accentMuted,
-    borderWidth: 2,
-    borderColor: COLORS.accent,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
   },
-  companyInitial: { fontSize: 26, fontWeight: '800', color: COLORS.accent },
+  companyInitial: { fontSize: 26, fontWeight: '800', color: '#FFFFFF' },
   jobTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, textAlign: 'center', marginBottom: 6, letterSpacing: -0.3 },
-  jobCompany: { fontSize: 15, color: COLORS.accent, fontWeight: '600' },
+  jobCompany: { fontSize: 15, color: COLORS.primaryLight, fontWeight: '600' },
   metaChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -256,12 +264,11 @@ const styles = StyleSheet.create({
   categoryChip: { backgroundColor: COLORS.infoMuted, borderColor: COLORS.info },
   metaChipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '500' },
   descCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 18,
     borderWidth: 1,
     borderColor: COLORS.border,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   descTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
   descText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 22 },
@@ -281,23 +288,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 14,
     paddingVertical: 16,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.border,
   },
   savedBtn: { borderColor: COLORS.success },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.accent },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.primaryLight },
   applyBtn: {
     flex: 2,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  applyBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
     paddingVertical: 16,
   },
-  applyBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+  applyBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });

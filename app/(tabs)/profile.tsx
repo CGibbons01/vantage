@@ -24,6 +24,7 @@ import {
   Upload,
 } from 'lucide-react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticatedGet } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
@@ -118,7 +119,7 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <View style={[styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <ActivityIndicator size="large" color={COLORS.primaryLight} />
       </View>
     );
   }
@@ -133,8 +134,8 @@ export default function ProfileScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={COLORS.accent}
-            colors={[COLORS.accent]}
+            tintColor={COLORS.primaryLight}
+            colors={[COLORS.primaryLight]}
           />
         }
       >
@@ -157,7 +158,7 @@ export default function ProfileScreen() {
               router.push('/profile/edit');
             }}
           >
-            <Edit2 size={16} color={COLORS.accent} />
+            <Edit2 size={16} color={COLORS.primaryLight} />
             <Text style={styles.editBtnText}>Edit</Text>
           </AnimatedPressable>
         </View>
@@ -170,9 +171,14 @@ export default function ProfileScreen() {
 
         {/* Avatar + Name */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatarCircle}>
+          <LinearGradient
+            colors={['#7C3AED', '#EC4899']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.avatarCircle}
+          >
             <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          </LinearGradient>
           <Text style={styles.userName}>{user?.name || 'Your Name'}</Text>
           <Text style={styles.userEmail}>{user?.email}</Text>
           {profile?.headline ? (
@@ -230,7 +236,7 @@ export default function ProfileScreen() {
         {profile?.experience && profile.experience.length > 0 ? (
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
-              <Briefcase size={16} color={COLORS.accent} />
+              <Briefcase size={16} color={COLORS.primaryLight} />
               <Text style={styles.cardTitle}>Experience</Text>
             </View>
             {profile.experience.map((exp, i) => (
@@ -254,7 +260,7 @@ export default function ProfileScreen() {
         {profile?.education && profile.education.length > 0 ? (
           <View style={styles.card}>
             <View style={styles.cardTitleRow}>
-              <GraduationCap size={16} color={COLORS.accent} />
+              <GraduationCap size={16} color={COLORS.primaryLight} />
               <Text style={styles.cardTitle}>Education</Text>
             </View>
             {profile.education.map((edu, i) => (
@@ -267,11 +273,11 @@ export default function ProfileScreen() {
           </View>
         ) : null}
 
-        {/* Empty State — no CV uploaded */}
+        {/* Empty State */}
         {!profile ? (
           <View style={styles.emptyStateCard}>
             <View style={styles.emptyStateIconCircle}>
-              <Upload size={24} color={COLORS.accent} />
+              <Upload size={24} color={COLORS.primaryLight} />
             </View>
             <Text style={styles.emptyStateTitle}>Complete your profile</Text>
             <Text style={styles.emptyStateSubtext}>
@@ -284,8 +290,15 @@ export default function ProfileScreen() {
                 router.push('/(tabs)/cv-writer');
               }}
             >
-              <Upload size={16} color="#000" />
-              <Text style={styles.emptyStateBtnText}>Upload CV</Text>
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.emptyStateBtnGradient}
+              >
+                <Upload size={16} color="#FFFFFF" />
+                <Text style={styles.emptyStateBtnText}>Upload CV</Text>
+              </LinearGradient>
             </AnimatedPressable>
           </View>
         ) : null}
@@ -358,14 +371,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.border,
   },
-  editBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.accent },
+  editBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.primaryLight },
   errorBanner: {
     backgroundColor: COLORS.errorMuted,
     borderRadius: 10,
@@ -380,25 +393,21 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.accentMuted,
-    borderWidth: 3,
-    borderColor: COLORS.accent,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
   },
-  avatarText: { fontSize: 28, fontWeight: '800', color: COLORS.accent },
+  avatarText: { fontSize: 28, fontWeight: '800', color: '#FFFFFF' },
   userName: { fontSize: 20, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
   userEmail: { fontSize: 14, color: COLORS.textSecondary, marginBottom: 6 },
-  headline: { fontSize: 14, color: COLORS.accent, fontWeight: '500', textAlign: 'center' },
+  headline: { fontSize: 14, color: COLORS.primaryLight, fontWeight: '500', textAlign: 'center' },
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   cardTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
@@ -407,18 +416,18 @@ const styles = StyleSheet.create({
   summaryText: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 21 },
   skillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   skillChip: {
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: COLORS.accentMuted,
+    borderColor: COLORS.border,
   },
-  skillChipText: { fontSize: 13, fontWeight: '500', color: COLORS.accent },
+  skillChipText: { fontSize: 13, fontWeight: '500', color: COLORS.primaryLight },
   timelineItem: { paddingBottom: 14, marginBottom: 14 },
   timelineItemBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
   expTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 2 },
-  expCompany: { fontSize: 13, color: COLORS.accent, marginBottom: 2 },
+  expCompany: { fontSize: 13, color: COLORS.primaryLight, marginBottom: 2 },
   expDates: { fontSize: 12, color: COLORS.textMuted, marginBottom: 4 },
   expDesc: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 },
   signOutBtn: {
@@ -435,38 +444,39 @@ const styles = StyleSheet.create({
   },
   signOutText: { fontSize: 15, fontWeight: '700', color: COLORS.error },
   emptyStateCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 24,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   emptyStateIconCircle: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
   },
   emptyStateTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' },
   emptyStateSubtext: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
   emptyStateBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  emptyStateBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: COLORS.accent,
-    borderRadius: 12,
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
-  emptyStateBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+  emptyStateBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -475,7 +485,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 20,
     padding: 24,
     width: '100%',
@@ -488,7 +498,7 @@ const styles = StyleSheet.create({
   modalButtons: { flexDirection: 'row', gap: 12 },
   modalCancelBtn: {
     flex: 1,
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.surfaceElevated,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',

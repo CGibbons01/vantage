@@ -13,6 +13,7 @@ import {
 import { useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, X, Check } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { authenticatedGet, authenticatedPut } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
@@ -100,8 +101,8 @@ export default function EditProfileScreen() {
           style={{ marginRight: 4, paddingHorizontal: 8, paddingVertical: 4 }}
         >
           {saving
-            ? <ActivityIndicator color={COLORS.accent} size="small" />
-            : <Text style={{ color: COLORS.accent, fontSize: 16, fontWeight: '700' }}>Save</Text>
+            ? <ActivityIndicator color={COLORS.primaryLight} size="small" />
+            : <Text style={{ color: COLORS.primaryLight, fontSize: 16, fontWeight: '700' }}>Save</Text>
           }
         </TouchableOpacity>
       ),
@@ -132,7 +133,7 @@ export default function EditProfileScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <ActivityIndicator size="large" color={COLORS.primaryLight} />
       </View>
     );
   }
@@ -235,7 +236,7 @@ export default function EditProfileScreen() {
               onSubmitEditing={addSkill}
             />
             <AnimatedPressable style={styles.addSkillBtn} onPress={addSkill}>
-              <Plus size={18} color="#000" />
+              <Plus size={18} color="#FFFFFF" />
             </AnimatedPressable>
           </View>
           {form.skills.length > 0 && (
@@ -244,7 +245,7 @@ export default function EditProfileScreen() {
                 <View key={i} style={styles.skillChip}>
                   <Text style={styles.skillChipText}>{skill}</Text>
                   <TouchableOpacity onPress={() => removeSkill(skill)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <X size={13} color={COLORS.accent} />
+                    <X size={13} color={COLORS.primaryLight} />
                   </TouchableOpacity>
                 </View>
               ))}
@@ -258,10 +259,17 @@ export default function EditProfileScreen() {
           onPress={handleSave}
           disabled={saving}
         >
-          {saving
-            ? <ActivityIndicator color="#000" size="small" />
-            : <Text style={styles.saveBtnText}>Save Changes</Text>
-          }
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.saveBtnGradient}
+          >
+            {saving
+              ? <ActivityIndicator color="#FFFFFF" size="small" />
+              : <Text style={styles.saveBtnText}>Save Changes</Text>
+            }
+          </LinearGradient>
         </AnimatedPressable>
       </ScrollView>
 
@@ -287,7 +295,14 @@ export default function EditProfileScreen() {
                 navigation.goBack();
               }}
             >
-              <Text style={styles.modalBtnText}>Done</Text>
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.modalBtnGradient}
+              >
+                <Text style={styles.modalBtnText}>Done</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -312,7 +327,7 @@ const styles = StyleSheet.create({
   fieldGroup: { marginBottom: 18 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -327,7 +342,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -336,23 +351,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: COLORS.accentMuted,
+    borderColor: COLORS.border,
   },
-  skillChipText: { fontSize: 13, fontWeight: '500', color: COLORS.accent },
+  skillChipText: { fontSize: 13, fontWeight: '500', color: COLORS.primaryLight },
   saveBtn: {
-    backgroundColor: COLORS.accent,
     borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
+    overflow: 'hidden',
     marginTop: 8,
   },
+  saveBtnGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
+  saveBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -361,7 +379,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 20,
     padding: 28,
     width: '100%',
@@ -382,10 +400,14 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 8 },
   modalMessage: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 24, lineHeight: 20 },
   modalBtn: {
-    backgroundColor: COLORS.accent,
     borderRadius: 12,
+    overflow: 'hidden',
+    minWidth: 120,
+  },
+  modalBtnGradient: {
     paddingHorizontal: 32,
     paddingVertical: 12,
+    alignItems: 'center',
   },
-  modalBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+  modalBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });

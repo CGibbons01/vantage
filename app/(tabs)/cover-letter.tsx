@@ -12,6 +12,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mail, Copy, CheckCircle, Download, ChevronDown, ChevronUp, Lightbulb, RotateCcw } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { authenticatedPost, getBearerToken, BACKEND_URL } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
@@ -56,7 +57,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
             <View style={styles.stepItem}>
               <View style={stepStyle}>
                 {isDone ? (
-                  <CheckCircle size={14} color="#000" />
+                  <CheckCircle size={14} color="#FFFFFF" />
                 ) : (
                   <Text style={textStyle}>{stepNum}</Text>
                 )}
@@ -226,7 +227,7 @@ export default function CoverLetterScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerIconCircle}>
-          <Mail size={20} color={COLORS.accent} />
+          <Mail size={20} color={COLORS.primaryLight} />
         </View>
         <Text style={styles.headerTitle}>Cover Letter</Text>
       </View>
@@ -249,7 +250,7 @@ export default function CoverLetterScreen() {
           }}
         >
           <View style={styles.tipsToggleLeft}>
-            <Lightbulb size={15} color={COLORS.accent} />
+            <Lightbulb size={15} color={COLORS.primaryLight} />
             <Text style={styles.tipsToggleText}>{tipsLabel}</Text>
           </View>
           {tipsExpanded
@@ -366,14 +367,21 @@ export default function CoverLetterScreen() {
           onPress={handleGenerate}
           disabled={loading}
         >
-          {loading ? (
-            <ActivityIndicator color="#000" size="small" />
-          ) : (
-            <>
-              <Mail size={18} color="#000" />
-              <Text style={styles.primaryBtnText}>Generate Cover Letter</Text>
-            </>
-          )}
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.primaryBtnGradient}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <>
+                <Mail size={18} color="#FFFFFF" />
+                <Text style={styles.primaryBtnText}>Generate Cover Letter</Text>
+              </>
+            )}
+          </LinearGradient>
         </AnimatedPressable>
 
         {result && (
@@ -397,8 +405,8 @@ export default function CoverLetterScreen() {
                 disabled={downloading}
               >
                 {downloading
-                  ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
-                  : <Download size={14} color={COLORS.accent} />
+                  ? <ActivityIndicator size="small" color={COLORS.primaryLight} style={{ width: 14, height: 14 }} />
+                  : <Download size={14} color={COLORS.primaryLight} />
                 }
                 <Text style={styles.actionBtnText}>PDF</Text>
               </AnimatedPressable>
@@ -408,7 +416,7 @@ export default function CoverLetterScreen() {
               >
                 {copied
                   ? <CheckCircle size={14} color={COLORS.success} />
-                  : <Copy size={14} color={COLORS.accent} />
+                  : <Copy size={14} color={COLORS.primaryLight} />
                 }
                 <Text style={[styles.actionBtnText, copied && { color: COLORS.success }]}>
                   {copied ? 'Copied!' : 'Copy'}
@@ -443,7 +451,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -463,7 +471,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
     justifyContent: 'center',
@@ -473,7 +481,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -481,14 +489,14 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   stepNum: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted },
-  stepNumActive: { fontSize: 12, fontWeight: '700', color: '#000' },
+  stepNumActive: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   stepLabel: { fontSize: 10, color: COLORS.textMuted, fontWeight: '500' },
-  stepLabelActive: { fontSize: 10, color: COLORS.accent, fontWeight: '700' },
+  stepLabelActive: { fontSize: 10, color: COLORS.primaryLight, fontWeight: '700' },
   stepConnector: {
     flex: 1,
     height: 1,
@@ -496,25 +504,25 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 4,
   },
-  stepConnectorDone: { backgroundColor: COLORS.accent },
+  stepConnectorDone: { backgroundColor: COLORS.primary },
 
   // Tips
   tipsToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 11,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
   },
   tipsToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tipsToggleText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
+  tipsToggleText: { fontSize: 14, fontWeight: '600', color: COLORS.primaryLight },
   tipsCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 10,
     padding: 14,
     marginBottom: 16,
@@ -527,7 +535,7 @@ const styles = StyleSheet.create({
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primaryLight,
     marginTop: 7,
     flexShrink: 0,
   },
@@ -545,13 +553,13 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: COLORS.border,
   },
-  sectionNum: { fontSize: 12, fontWeight: '800', color: COLORS.accent },
+  sectionNum: { fontSize: 12, fontWeight: '800', color: COLORS.primaryLight },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
 
   // Form
@@ -564,7 +572,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -584,42 +592,42 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 12,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
     gap: 3,
   },
-  toneBtnActive: { backgroundColor: COLORS.accentMuted, borderColor: 'rgba(245,158,11,0.4)' },
+  toneBtnActive: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary },
   toneBtnLabel: { fontSize: 13, fontWeight: '700', color: COLORS.textSecondary },
-  toneBtnLabelActive: { color: COLORS.accent },
+  toneBtnLabelActive: { color: COLORS.primaryLight },
   toneBtnDesc: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
-  toneBtnDescActive: { color: COLORS.accent, opacity: 0.8 },
+  toneBtnDescActive: { color: COLORS.primaryLight, opacity: 0.8 },
 
   // Generate button
   primaryBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  primaryBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
     height: 56,
-    marginBottom: 20,
-    boxShadow: '0 4px 20px rgba(245,158,11,0.4)',
   },
   primaryBtnDisabled: { opacity: 0.6 },
-  primaryBtnText: { fontSize: 17, fontWeight: '800', color: '#000' },
+  primaryBtnText: { fontSize: 17, fontWeight: '800', color: '#FFFFFF' },
 
   // Result
   resultCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 16,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   resultBanner: {
     flexDirection: 'row',
@@ -645,21 +653,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
   },
   actionBtnDisabled: { opacity: 0.5 },
   actionBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
-  actionBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.accent },
+  actionBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.primaryLight },
   startOverBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -669,7 +677,7 @@ const styles = StyleSheet.create({
   },
   startOverText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
   letterContent: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.surfaceElevated,
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,

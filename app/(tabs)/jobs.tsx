@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, MapPin, Briefcase, Lock, ChevronRight, DollarSign, ChevronDown, ChevronUp, Clock } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { authenticatedGet, authenticatedPost } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
@@ -83,7 +84,7 @@ function SkeletonLine({ width, height = 14 }: { width: number | string; height?:
   }, []);
   return (
     <Animated.View
-      style={{ width, height, borderRadius: height / 2, backgroundColor: COLORS.surface, opacity }}
+      style={{ width, height, borderRadius: height / 2, backgroundColor: COLORS.surfaceElevated, opacity }}
     />
   );
 }
@@ -92,7 +93,7 @@ function JobCardSkeleton() {
   return (
     <View style={styles.jobCard}>
       <View style={styles.jobCardHeader}>
-        <View style={[styles.jobIconCircle, { backgroundColor: COLORS.surfaceAlt }]} />
+        <View style={[styles.jobIconCircle, { backgroundColor: COLORS.surfaceElevated }]} />
         <View style={{ flex: 1, gap: 8 }}>
           <SkeletonLine width="70%" height={14} />
           <SkeletonLine width="45%" height={12} />
@@ -112,8 +113,8 @@ function JobCardSkeleton() {
 
 function MatchBadge({ pct }: { pct: number }) {
   const pctNum = Number(pct);
-  const badgeColor = pctNum >= 80 ? COLORS.success : pctNum >= 60 ? COLORS.accent : COLORS.textMuted;
-  const badgeBg = pctNum >= 80 ? COLORS.successMuted : pctNum >= 60 ? COLORS.accentMuted : 'rgba(100,116,139,0.15)';
+  const badgeColor = pctNum >= 80 ? COLORS.success : pctNum >= 60 ? COLORS.primaryLight : COLORS.textMuted;
+  const badgeBg = pctNum >= 80 ? COLORS.successMuted : pctNum >= 60 ? COLORS.primaryMuted : 'rgba(100,116,139,0.15)';
   const pctText = `${pctNum}% Match`;
   return (
     <View style={[styles.matchBadge, { backgroundColor: badgeBg, borderColor: badgeColor + '55' }]}>
@@ -231,8 +232,8 @@ function JobCard({
           >
             <Text style={styles.whyMatchText}>Why this match?</Text>
             {expanded
-              ? <ChevronUp size={14} color={COLORS.accent} />
-              : <ChevronDown size={14} color={COLORS.accent} />
+              ? <ChevronUp size={14} color={COLORS.primaryLight} />
+              : <ChevronDown size={14} color={COLORS.primaryLight} />
             }
           </AnimatedPressable>
         )}
@@ -415,7 +416,7 @@ export default function JobsScreen() {
     return (
       <View style={[styles.lockedContainer, { paddingTop: insets.top }]}>
         <View style={styles.lockIconCircle}>
-          <Lock size={36} color={COLORS.accent} />
+          <Lock size={36} color={COLORS.primaryLight} />
         </View>
         <Text style={styles.lockedTitle}>Premium Feature</Text>
         <Text style={styles.lockedSubtitle}>
@@ -425,11 +426,18 @@ export default function JobsScreen() {
           style={styles.unlockBtn}
           onPress={() => { console.log('[Jobs] Navigate to paywall'); router.push('/paywall'); }}
         >
-          <Text style={styles.unlockBtnText}>
-            {'Unlock Job Search — '}
-            {priceString}
-            {'/month'}
-          </Text>
+          <LinearGradient
+            colors={['#7C3AED', '#4F46E5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.unlockBtnGradient}
+          >
+            <Text style={styles.unlockBtnText}>
+              {'Unlock Job Search — '}
+              {priceString}
+              {'/month'}
+            </Text>
+          </LinearGradient>
         </AnimatedPressable>
       </View>
     );
@@ -464,7 +472,7 @@ export default function JobsScreen() {
           </View>
           <AnimatedPressable style={styles.searchBtn} onPress={handleSearch} disabled={loading}>
             {loading && !refreshing && jobs.length === 0
-              ? <ActivityIndicator color="#000" size="small" />
+              ? <ActivityIndicator color="#FFFFFF" size="small" />
               : <Text style={styles.searchBtnText}>Search</Text>
             }
           </AnimatedPressable>
@@ -524,7 +532,7 @@ export default function JobsScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} colors={[COLORS.accent]} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primaryLight} colors={[COLORS.primaryLight]} />
           }
           renderItem={({ item, index }) => (
             <JobCard
@@ -542,7 +550,7 @@ export default function JobsScreen() {
             !loading ? (
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconCircle}>
-                  <Briefcase size={32} color={COLORS.accent} />
+                  <Briefcase size={32} color={COLORS.primaryLight} />
                 </View>
                 <Text style={styles.emptyTitle}>
                   {searched ? 'No jobs found' : 'Find your next opportunity'}
@@ -559,7 +567,7 @@ export default function JobsScreen() {
             hasMore && jobs.length > 0 ? (
               <AnimatedPressable style={styles.loadMoreBtn} onPress={handleLoadMore} disabled={loadingMore}>
                 {loadingMore
-                  ? <ActivityIndicator color={COLORS.accent} size="small" />
+                  ? <ActivityIndicator color={COLORS.primaryLight} size="small" />
                   : <Text style={styles.loadMoreText}>Load more results</Text>
                 }
               </AnimatedPressable>
@@ -584,7 +592,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -598,12 +606,16 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   unlockBtn: {
-    backgroundColor: COLORS.accent,
     borderRadius: 14,
+    overflow: 'hidden',
+  },
+  unlockBtnGradient: {
     paddingHorizontal: 24,
     paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  unlockBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+  unlockBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   header: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -622,21 +634,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
   categoryChipActive: {
-    backgroundColor: COLORS.accentMuted,
-    borderColor: 'rgba(245,158,11,0.5)',
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
   },
   categoryChipText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
-  categoryChipTextActive: { color: COLORS.accent },
+  categoryChipTextActive: { color: COLORS.primaryLight },
   searchInput: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     paddingHorizontal: 14,
     height: 48,
@@ -645,14 +657,14 @@ const styles = StyleSheet.create({
   },
   searchText: { flex: 1, fontSize: 15, color: COLORS.text },
   searchBtn: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
     height: 48,
     paddingHorizontal: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  searchBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+  searchBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   errorBanner: {
     marginHorizontal: 20,
     backgroundColor: COLORS.errorMuted,
@@ -665,26 +677,25 @@ const styles = StyleSheet.create({
   errorText: { color: COLORS.error, fontSize: 13 },
   listContent: { paddingHorizontal: 20, paddingBottom: 120, paddingTop: 4 },
   jobCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
-    boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
   },
   jobCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   jobIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.2)',
+    borderColor: COLORS.border,
   },
-  jobIconInitial: { fontSize: 16, fontWeight: '800', color: COLORS.accent },
+  jobIconInitial: { fontSize: 16, fontWeight: '800', color: COLORS.primaryLight },
   badgeCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   matchBadge: {
     borderRadius: 8,
@@ -716,14 +727,14 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 11, fontWeight: '600', color: COLORS.info },
   jobTypeBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(168,85,247,0.12)',
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderWidth: 1,
-    borderColor: 'rgba(168,85,247,0.25)',
+    borderColor: COLORS.border,
   },
-  jobTypeText: { fontSize: 11, fontWeight: '600', color: '#A855F7' },
+  jobTypeText: { fontSize: 11, fontWeight: '600', color: COLORS.primaryLight },
   jobSnippet: { fontSize: 13, color: COLORS.textMuted, lineHeight: 18 },
   whyMatchRow: {
     flexDirection: 'row',
@@ -734,7 +745,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
   },
-  whyMatchText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
+  whyMatchText: { fontSize: 12, fontWeight: '600', color: COLORS.primaryLight },
   matchDetails: { paddingTop: 10, gap: 10 },
   skillSection: { gap: 6 },
   skillSectionLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -766,17 +777,17 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.2)',
+    borderColor: COLORS.border,
   },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 8, textAlign: 'center' },
   emptySubtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20 },
   loadMoreBtn: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     height: 48,
     justifyContent: 'center',
@@ -785,5 +796,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  loadMoreText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
+  loadMoreText: { fontSize: 14, fontWeight: '600', color: COLORS.primaryLight },
 });

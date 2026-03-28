@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FileText, Copy, CheckCircle, ChevronDown, ChevronUp, X, Download, Upload } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { authenticatedPost, getBearerToken, BACKEND_URL } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
@@ -68,7 +69,7 @@ function SkillChip({ label, onRemove }: { label: string; onRemove: () => void })
     <View style={styles.chip}>
       <Text style={styles.chipText}>{label}</Text>
       <AnimatedPressable onPress={onRemove} style={styles.chipRemove}>
-        <X size={12} color={COLORS.accent} />
+        <X size={12} color={COLORS.primaryLight} />
       </AnimatedPressable>
     </View>
   );
@@ -472,15 +473,15 @@ export default function CVWriterScreen() {
 
   const scoreBefore = impResult ? Number(impResult.score_before) : 0;
   const scoreAfter = impResult ? Number(impResult.score_after) : 0;
-  const scoreBeforeColor = scoreBefore >= 80 ? COLORS.success : scoreBefore >= 60 ? COLORS.accent : COLORS.textMuted;
-  const scoreAfterColor = scoreAfter >= 80 ? COLORS.success : scoreAfter >= 60 ? COLORS.accent : COLORS.textMuted;
+  const scoreBeforeColor = scoreBefore >= 80 ? COLORS.success : scoreBefore >= 60 ? COLORS.primaryLight : COLORS.textMuted;
+  const scoreAfterColor = scoreAfter >= 80 ? COLORS.success : scoreAfter >= 60 ? COLORS.primaryLight : COLORS.textMuted;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerIconCircle}>
-          <FileText size={20} color={COLORS.accent} />
+          <FileText size={20} color={COLORS.primaryLight} />
         </View>
         <Text style={styles.headerTitle}>AI CV Writer</Text>
       </View>
@@ -491,13 +492,35 @@ export default function CVWriterScreen() {
           style={[styles.modeBtn, mode === 'generate' && styles.modeBtnActive]}
           onPress={() => { console.log('[CVWriter] Switch to Generate mode'); setMode('generate'); }}
         >
-          <Text style={[styles.modeBtnText, mode === 'generate' && styles.modeBtnTextActive]}>Generate CV</Text>
+          {mode === 'generate' ? (
+            <LinearGradient
+              colors={['#7C3AED', '#4F46E5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modeBtnGradient}
+            >
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Generate CV</Text>
+            </LinearGradient>
+          ) : (
+            <Text style={styles.modeBtnText}>Generate CV</Text>
+          )}
         </AnimatedPressable>
         <AnimatedPressable
           style={[styles.modeBtn, mode === 'improve' && styles.modeBtnActive]}
           onPress={() => { console.log('[CVWriter] Switch to Improve mode'); setMode('improve'); }}
         >
-          <Text style={[styles.modeBtnText, mode === 'improve' && styles.modeBtnTextActive]}>Improve CV</Text>
+          {mode === 'improve' ? (
+            <LinearGradient
+              colors={['#7C3AED', '#4F46E5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modeBtnGradient}
+            >
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Improve CV</Text>
+            </LinearGradient>
+          ) : (
+            <Text style={styles.modeBtnText}>Improve CV</Text>
+          )}
         </AnimatedPressable>
       </View>
 
@@ -681,10 +704,17 @@ export default function CVWriterScreen() {
               onPress={handleGenerate}
               disabled={genLoading}
             >
-              {genLoading
-                ? <ActivityIndicator color="#000" size="small" />
-                : <Text style={styles.primaryBtnText}>Generate CV</Text>
-              }
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryBtnGradient}
+              >
+                {genLoading
+                  ? <ActivityIndicator color="#FFFFFF" size="small" />
+                  : <Text style={styles.primaryBtnText}>Generate CV</Text>
+                }
+              </LinearGradient>
             </AnimatedPressable>
 
             {genResult && (
@@ -698,8 +728,8 @@ export default function CVWriterScreen() {
                       disabled={genDownloading}
                     >
                       {genDownloading
-                        ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
-                        : <Download size={14} color={COLORS.accent} />
+                        ? <ActivityIndicator size="small" color={COLORS.primaryLight} style={{ width: 14, height: 14 }} />
+                        : <Download size={14} color={COLORS.primaryLight} />
                       }
                       <Text style={styles.copyBtnText}>PDF</Text>
                     </AnimatedPressable>
@@ -709,7 +739,7 @@ export default function CVWriterScreen() {
                     >
                       {genCopied
                         ? <CheckCircle size={14} color={COLORS.success} />
-                        : <Copy size={14} color={COLORS.accent} />
+                        : <Copy size={14} color={COLORS.primaryLight} />
                       }
                       <Text style={[styles.copyBtnText, genCopied && { color: COLORS.success }]}>
                         {genCopied ? 'Copied!' : 'Copy'}
@@ -749,12 +779,12 @@ export default function CVWriterScreen() {
             >
               {uploadingFile ? (
                 <>
-                  <ActivityIndicator color={COLORS.accent} size="small" />
+                  <ActivityIndicator color={COLORS.primaryLight} size="small" />
                   <Text style={styles.uploadFileBtnText}>Parsing CV…</Text>
                 </>
               ) : (
                 <>
-                  <Upload size={16} color={COLORS.accent} />
+                  <Upload size={16} color={COLORS.primaryLight} />
                   <Text style={styles.uploadFileBtnText}>Upload PDF or Word document</Text>
                 </>
               )}
@@ -798,10 +828,17 @@ export default function CVWriterScreen() {
               onPress={handleImprove}
               disabled={impLoading}
             >
-              {impLoading
-                ? <ActivityIndicator color="#000" size="small" />
-                : <Text style={styles.primaryBtnText}>Improve My CV</Text>
-              }
+              <LinearGradient
+                colors={['#7C3AED', '#4F46E5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.primaryBtnGradient}
+              >
+                {impLoading
+                  ? <ActivityIndicator color="#FFFFFF" size="small" />
+                  : <Text style={styles.primaryBtnText}>Improve My CV</Text>
+                }
+              </LinearGradient>
             </AnimatedPressable>
 
             {impResult && (
@@ -863,8 +900,8 @@ export default function CVWriterScreen() {
                         disabled={impDownloading}
                       >
                         {impDownloading
-                          ? <ActivityIndicator size="small" color={COLORS.accent} style={{ width: 14, height: 14 }} />
-                          : <Download size={14} color={COLORS.accent} />
+                          ? <ActivityIndicator size="small" color={COLORS.primaryLight} style={{ width: 14, height: 14 }} />
+                          : <Download size={14} color={COLORS.primaryLight} />
                         }
                         <Text style={styles.copyBtnText}>PDF</Text>
                       </AnimatedPressable>
@@ -874,7 +911,7 @@ export default function CVWriterScreen() {
                       >
                         {impCopied
                           ? <CheckCircle size={14} color={COLORS.success} />
-                          : <Copy size={14} color={COLORS.accent} />
+                          : <Copy size={14} color={COLORS.primaryLight} />
                         }
                         <Text style={[styles.copyBtnText, impCopied && { color: COLORS.success }]}>
                           {impCopied ? 'Copied!' : 'Copy'}
@@ -919,7 +956,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -927,7 +964,7 @@ const styles = StyleSheet.create({
   modeToggle: {
     flexDirection: 'row',
     marginHorizontal: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     padding: 4,
     marginBottom: 16,
@@ -939,10 +976,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 9,
     alignItems: 'center',
+    overflow: 'hidden',
   },
-  modeBtnActive: { backgroundColor: COLORS.accent },
+  modeBtnActive: {},
+  modeBtnGradient: {
+    width: '100%',
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
   modeBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
-  modeBtnTextActive: { color: '#000' },
+  modeBtnTextActive: { color: '#FFFFFF' },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
   fieldLabel: {
@@ -954,7 +998,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -976,7 +1020,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   entryCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
@@ -994,80 +1038,80 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: COLORS.border,
     borderStyle: 'dashed',
     marginBottom: 20,
   },
-  addEntryBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
+  addEntryBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.primaryLight },
   skillInputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
   addSkillBtn: {
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 12,
     paddingHorizontal: 16,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: COLORS.border,
   },
-  addSkillBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.accent },
+  addSkillBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.primaryLight },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
   },
-  chipText: { fontSize: 13, fontWeight: '500', color: COLORS.accent },
+  chipText: { fontSize: 13, fontWeight: '500', color: COLORS.primaryLight },
   chipRemove: { padding: 2 },
   focusChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  focusChipSelected: { backgroundColor: COLORS.accentMuted, borderColor: 'rgba(245,158,11,0.4)' },
+  focusChipSelected: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary },
   focusChipText: { fontSize: 13, fontWeight: '500', color: COLORS.textSecondary },
-  focusChipTextSelected: { color: COLORS.accent, fontWeight: '600' },
+  focusChipTextSelected: { color: COLORS.primaryLight, fontWeight: '600' },
   primaryBtn: {
-    backgroundColor: COLORS.accent,
     borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  primaryBtnGradient: {
     height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 20,
-    boxShadow: '0 4px 16px rgba(245,158,11,0.3)',
   },
   primaryBtnDisabled: { opacity: 0.6 },
-  primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
+  primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
   uploadFileBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     paddingVertical: 13,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: COLORS.border,
     borderStyle: 'dashed',
   },
-  uploadFileBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.accent },
+  uploadFileBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.primaryLight },
   resultCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 16,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   resultHeader: {
     flexDirection: 'row',
@@ -1081,38 +1125,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
   },
   copyBtnDisabled: { opacity: 0.5 },
   copyBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
-  copyBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.accent },
+  copyBtnText: { fontSize: 12, fontWeight: '600', color: COLORS.primaryLight },
   sectionTabsScroll: { marginBottom: 12 },
   sectionTabs: { flexDirection: 'row', gap: 8 },
   sectionTab: {
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.surfaceElevated,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  sectionTabActive: { backgroundColor: COLORS.accentMuted, borderColor: 'rgba(245,158,11,0.4)' },
+  sectionTabActive: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary },
   sectionTabText: { fontSize: 13, fontWeight: '500', color: COLORS.textSecondary },
-  sectionTabTextActive: { color: COLORS.accent, fontWeight: '600' },
+  sectionTabTextActive: { color: COLORS.primaryLight, fontWeight: '600' },
   sectionContent: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.surfaceElevated,
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
   sectionContentTall: {
-    backgroundColor: COLORS.surfaceAlt,
+    backgroundColor: COLORS.surfaceElevated,
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,
@@ -1145,13 +1189,12 @@ const styles = StyleSheet.create({
   },
   saveProfileBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   scoreCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 12,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   scoreArrowRow: {
     flexDirection: 'row',
@@ -1176,13 +1219,12 @@ const styles = StyleSheet.create({
   scoreBarFill: { height: '100%', borderRadius: 4 },
   scoreBarValue: { fontSize: 13, fontWeight: '700', width: 28, textAlign: 'right' },
   suggestionsCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 12,
-    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
   },
   suggestionsHeader: {
     flexDirection: 'row',
@@ -1200,7 +1242,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primaryLight,
     marginTop: 7,
     flexShrink: 0,
   },

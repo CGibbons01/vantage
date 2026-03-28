@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Lock, Sparkles } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 
@@ -15,13 +16,18 @@ export function PremiumLock({ featureName, description }: PremiumLockProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.iconRing}>
+      <LinearGradient
+        colors={['rgba(124, 58, 237, 0.2)', 'rgba(79, 70, 229, 0.1)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.iconRing}
+      >
         <View style={styles.iconCircle}>
-          <Lock size={32} color={COLORS.accent} />
+          <Lock size={32} color={COLORS.primaryLight} />
         </View>
-      </View>
+      </LinearGradient>
       <View style={styles.badge}>
-        <Sparkles size={12} color={COLORS.accent} />
+        <Sparkles size={12} color={COLORS.primaryLight} />
         <Text style={styles.badgeText}>Premium Feature</Text>
       </View>
       <Text style={styles.title}>{featureName}</Text>
@@ -33,8 +39,15 @@ export function PremiumLock({ featureName, description }: PremiumLockProps) {
           router.push('/paywall');
         }}
       >
-        <Sparkles size={16} color="#000" />
-        <Text style={styles.upgradeBtnText}>Upgrade to Premium</Text>
+        <LinearGradient
+          colors={['#7C3AED', '#4F46E5']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.upgradeBtnGradient}
+        >
+          <Sparkles size={16} color="#FFFFFF" />
+          <Text style={styles.upgradeBtnText}>Upgrade to Premium</Text>
+        </LinearGradient>
       </AnimatedPressable>
     </View>
   );
@@ -52,9 +65,8 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: 'rgba(245,158,11,0.06)',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.2)',
+    borderColor: COLORS.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
@@ -63,7 +75,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: COLORS.accentMuted,
+    backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -71,18 +83,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: COLORS.primaryMuted,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.25)',
+    borderColor: COLORS.border,
     marginBottom: 16,
   },
   badgeText: {
     fontSize: 12,
     fontWeight: '600',
-    color: COLORS.accent,
+    color: COLORS.primaryLight,
     letterSpacing: 0.3,
   },
   title: {
@@ -101,18 +113,19 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   upgradeBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  upgradeBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
     paddingHorizontal: 28,
     paddingVertical: 16,
-    boxShadow: '0 4px 16px rgba(245,158,11,0.35)',
   },
   upgradeBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#000',
+    color: '#FFFFFF',
   },
 });
