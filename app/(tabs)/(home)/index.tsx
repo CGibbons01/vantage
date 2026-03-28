@@ -6,8 +6,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Platform,
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const GRID_PADDING = 16;
+const GRID_GAP = 10;
+const CARD_WIDTH = Math.floor((SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3);
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { BodyScrollView } from "@/components/BodyScrollView";
@@ -381,8 +387,8 @@ export default function HomeScreen() {
               onPress={onPress}
               activeOpacity={0.75}
             >
-              <Ionicons name={action.icon} size={26} color={COLORS.accent} />
-              <Text style={styles.gridLabel}>{action.label}</Text>
+              <Ionicons name={action.icon} size={22} color={COLORS.accent} />
+              <Text style={styles.gridLabel} numberOfLines={2}>{action.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -638,23 +644,26 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: GRID_GAP,
+    justifyContent: "flex-start",
   },
   gridItem: {
     backgroundColor: COLORS.surface,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
-    width: "31.5%",
-    aspectRatio: 1,
+    width: CARD_WIDTH,
+    height: CARD_WIDTH,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 6,
+    paddingHorizontal: 6,
   },
   gridLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: COLORS.text,
     textAlign: "center",
+    lineHeight: 14,
   },
 });

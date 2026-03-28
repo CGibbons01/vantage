@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
-import { authClient, setBearerToken, clearAuthTokens } from "@/lib/auth";
+import { authClient, setBearerToken, clearAuthTokens, initAuthStorage } from "@/lib/auth";
 
 interface User {
   id: string;
@@ -129,6 +129,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
 
     try {
+      // Ensure SecureStore tokens are loaded into the sync memory cache
+      // before getSession() tries to read cookies synchronously.
+      await initAuthStorage();
+
       console.log("[AuthContext] fetchUser — calling getSession");
       const session = await Promise.race([
         authClient.getSession(),
