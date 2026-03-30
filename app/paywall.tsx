@@ -2,7 +2,7 @@
  * Paywall Screen — Premium Purple/Pink theme
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -58,6 +58,7 @@ export default function PaywallScreen() {
     isWeb,
     purchasePackage,
     restorePurchases,
+    checkSubscription,
     mockWebPurchase,
     mockNativePurchase,
   } = useSubscription();
@@ -75,6 +76,16 @@ export default function PaywallScreen() {
     }
   }, [packages, selectedPackage]);
 
+  // Navigate to home only after the context confirms the subscription is active.
+  // This prevents the navigation loop where useSubscriptionGuard fires before
+  // isSubscribed updates and redirects the user back to the paywall.
+  useEffect(() => {
+    if (isSubscribed && !loading) {
+      console.log('[Paywall] isSubscribed confirmed — navigating to home');
+      router.replace("/(tabs)/(home)");
+    }
+  }, [isSubscribed, loading, router]);
+
   const handlePurchase = async () => {
     if (!selectedPackage) return;
     console.log('[Paywall] Purchase button pressed:', selectedPackage.identifier);
@@ -82,9 +93,8 @@ export default function PaywallScreen() {
       setPurchasing(true);
       const success = await purchasePackage(selectedPackage);
       if (success) {
-        Alert.alert("Welcome!", "Thank you for your purchase.", [
-          { text: "OK", onPress: () => router.replace("/(tabs)/(home)") },
-        ]);
+        console.log('[Paywall] Purchase succeeded — refreshing subscription state');
+        await checkSubscription();
       }
     } catch (error: any) {
       Alert.alert("Purchase Failed", error.message || "Please try again.");
@@ -99,9 +109,8 @@ export default function PaywallScreen() {
       setRestoring(true);
       const restored = await restorePurchases();
       if (restored) {
-        Alert.alert("Restored!", "Your subscription has been restored.", [
-          { text: "OK", onPress: () => router.replace("/(tabs)/(home)") },
-        ]);
+        console.log('[Paywall] Restore succeeded — refreshing subscription state');
+        await checkSubscription();
       } else {
         Alert.alert("No Purchases Found", "We couldn't find any previous purchases.");
       }
@@ -349,7 +358,7 @@ export default function PaywallScreen() {
                     onPress={async () => {
                       console.log('[Paywall] Dev simulate purchase pressed');
                       await mockNativePurchase();
-                      router.replace("/(tabs)/(home)");
+                      // Navigation handled by the isSubscribed useEffect
                     }}
                   >
                     <Text style={styles.devMockButtonText}>Dev: Simulate Purchase</Text>
@@ -460,7 +469,7 @@ export default function PaywallScreen() {
                   onPress={() => {
                     setWebMockDialogState("hidden");
                     mockWebPurchase();
-                    router.replace("/(tabs)/(home)");
+                    // Navigation handled by the isSubscribed useEffect
                   }}
                 >
                   <Text style={[styles.webDialogButtonText, { color: COLORS.primaryLight }]}>Test Valid Purchase</Text>
