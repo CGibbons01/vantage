@@ -3,7 +3,7 @@ import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-const API_URL = "https://fm4g4jwswxk2yhw9dzncq8pqhpg8zwnt.app.specular.dev";
+const API_URL = "https://93xu69nwqqwz659axrd8dvwjn3dqgwta.app.specular.dev";
 
 export const BEARER_TOKEN_KEY = "vantageairecruitment_bearer_token";
 
