@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { BEARER_TOKEN_KEY } from "@/lib/auth";
 
-export const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || "https://fm4g4jwswxk2yhw9dzncq8pqhpg8zwnt.app.specular.dev";
+export const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || "https://93xu69nwqqwz659axrd8dvwjn3dqgwta.app.specular.dev";
 
 export const isBackendConfigured = (): boolean => {
   return !!BACKEND_URL && BACKEND_URL.length > 0;
