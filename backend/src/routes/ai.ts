@@ -13,28 +13,28 @@ const pdfParse = require('pdf-parse');
 
 // Zod schemas for structured outputs
 const cvDataSchema = z.object({
-  name: z.string(),
-  email: z.string().email(),
-  phone: z.string(),
-  location: z.string(),
-  summary: z.string(),
-  skills: z.array(z.string()),
+  name: z.string().optional().default(''),
+  email: z.string().optional().default(''),
+  phone: z.string().optional().default(''),
+  location: z.string().optional().default(''),
+  summary: z.string().optional().default(''),
+  skills: z.array(z.string()).optional().default([]),
   experience: z.array(z.object({
-    company: z.string(),
-    role: z.string(),
-    startDate: z.string(),
-    endDate: z.string(),
-    description: z.string(),
-  })),
+    company: z.string().default(''),
+    role: z.string().default(''),
+    startDate: z.string().default(''),
+    endDate: z.string().default(''),
+    description: z.string().default(''),
+  })).optional().default([]),
   education: z.array(z.object({
-    institution: z.string(),
-    degree: z.string(),
-    field: z.string(),
-    startDate: z.string(),
-    endDate: z.string(),
-  })),
-  certifications: z.array(z.string()),
-});
+    institution: z.string().default(''),
+    degree: z.string().default(''),
+    field: z.string().default(''),
+    startDate: z.string().default(''),
+    endDate: z.string().default(''),
+  })).optional().default([]),
+  certifications: z.array(z.string()).optional().default([]),
+}).passthrough();
 
 type CVData = z.infer<typeof cvDataSchema>;
 
@@ -132,31 +132,61 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
       try {
         const { text: response } = await generateText({
           model: gateway('openai/gpt-4o-mini'),
-          prompt: `Extract and structure the following CV text into JSON format with these exact fields:
-name (string), email (string), phone (string), location (string), summary (string), skills (array of strings), experience (array of objects with: company, role, startDate, endDate, description), education (array of objects with: institution, degree, field, startDate, endDate), certifications (array of strings).
+          prompt: `Extract and structure the following CV text into JSON format. Include any fields you can extract from: name, email, phone, location, summary, skills (array), experience (array of objects with: company, role, startDate, endDate, description), education (array of objects with: institution, degree, field, startDate, endDate), certifications (array).
 
-RETURN ONLY VALID JSON, NO OTHER TEXT.
+If a field is not found in the CV, omit it from the JSON. Return ONLY valid JSON object, no other text.
 
 CV Text:
 ${cvText}`,
         });
 
-        let parsed;
+        app.logger.debug({ response: response.substring(0, 500) }, 'AI response received');
+
+        let parsed: any = {};
         try {
           parsed = JSON.parse(response);
         } catch (parseErr) {
-          app.logger.warn({ err: parseErr }, 'Failed to parse JSON response, attempting to extract JSON');
+          app.logger.warn({ err: parseErr, response: response.substring(0, 500) }, 'Failed to parse JSON response, attempting to extract JSON');
           const jsonMatch = response.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            parsed = JSON.parse(jsonMatch[0]);
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+            } catch (innerErr) {
+              app.logger.warn({ err: innerErr, extractedJson: jsonMatch[0].substring(0, 500) }, 'Inner JSON parse failed, returning empty structure');
+              parsed = {};
+            }
           } else {
-            throw new Error('No valid JSON found in response');
+            app.logger.warn({}, 'No JSON object found in response, using empty object');
+            parsed = {};
           }
         }
 
-        const validated = cvDataSchema.parse(parsed);
-        app.logger.info({ userId: session.user.id, name: validated.name }, 'CV parsed successfully');
-        return validated;
+        // Ensure parsed is an object
+        if (!parsed || typeof parsed !== 'object') {
+          parsed = {};
+        }
+
+        // Validate and apply defaults
+        try {
+          const validated = cvDataSchema.parse(parsed);
+          app.logger.info({ userId: session.user.id, name: validated.name || 'Unknown' }, 'CV parsed successfully');
+          return validated;
+        } catch (validateErr) {
+          app.logger.error({ err: validateErr, parsed: JSON.stringify(parsed).substring(0, 500) }, 'CV schema validation failed');
+          // Return a minimal valid response with defaults
+          const skills = Array.isArray(parsed.skills) ? parsed.skills.map((s: any) => String(s)) : [];
+          return {
+            name: String(parsed.name || ''),
+            email: String(parsed.email || ''),
+            phone: String(parsed.phone || ''),
+            location: String(parsed.location || ''),
+            summary: String(parsed.summary || ''),
+            skills,
+            experience: [],
+            education: [],
+            certifications: [],
+          };
+        }
       } catch (aiErr) {
         app.logger.error({ err: aiErr, userId: session.user.id }, 'AI parsing failed');
         return reply.status(500).send({ error: 'Failed to parse CV with AI' });
