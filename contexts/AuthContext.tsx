@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import { Platform } from "react-native";
 import * as Linking from "expo-linking";
 import * as AppleAuthentication from "expo-apple-authentication";
+import * as SecureStore from "expo-secure-store";
 import { authClient, setBearerToken, clearAuthTokens, initAuthStorage } from "@/lib/auth";
 
 interface User {
@@ -100,6 +101,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Extract and store the bearer token from the expo plugin's SecureStore cookie
+  const syncTokenFromCookie = async () => {
+    if (Platform.OS === "web") return;
+    try {
+      const cookie = await SecureStore.getItemAsync("vantageairecruitment_cookie");
+      if (cookie) {
+        const match = cookie.match(/better-auth\.session_token=([^;]+)/);
+        if (match) {
+          console.log("[AuthContext] syncTokenFromCookie — token extracted from cookie");
+          await setBearerToken(match[1]);
+        } else {
+          console.log("[AuthContext] syncTokenFromCookie — cookie present but no session_token match:", cookie.substring(0, 60));
+        }
+      } else {
+        console.log("[AuthContext] syncTokenFromCookie — no cookie found in SecureStore");
+      }
+    } catch (e) {
+      console.warn("[AuthContext] syncTokenFromCookie error:", e);
+    }
+  };
+
   // Silent refresh: updates user state without triggering the loading spinner
   const silentRefresh = async () => {
     if (fetchingRef.current) return;
@@ -108,9 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const session = await authClient.getSession();
       if (session?.data?.user) {
         setUser(session.data.user as User);
-        if (session.data.session?.token) {
-          await setBearerToken(session.data.session.token);
-        }
+        await syncTokenFromCookie();
       }
       // Don't clear user on silent refresh failure — keep existing session
     } catch {
@@ -142,9 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session?.data?.user) {
         console.log("[AuthContext] fetchUser — session found, user:", session.data.user.email);
         setUser(session.data.user as User);
-        if (session.data.session?.token) {
-          await setBearerToken(session.data.session.token);
-        }
+        await syncTokenFromCookie();
       } else {
         console.log("[AuthContext] fetchUser — no session, user is null");
         setUser(null);
@@ -166,6 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) {
       throw new Error(error.message || "Sign in failed. Please check your credentials.");
     }
+    if (data?.token) {
+      console.log("[AuthContext] signInWithEmail — token received directly from sign-in response");
+      await setBearerToken(data.token);
+    }
     await fetchUser();
   };
 
@@ -182,6 +204,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("[AuthContext] auto signIn after signup — data:", signInData, "error:", signInError);
     if (signInError) {
       console.warn("[AuthContext] auto sign-in after signup failed:", signInError.message);
+    }
+    if (signInData?.token) {
+      console.log("[AuthContext] signUpWithEmail — token received from auto sign-in response");
+      await setBearerToken(signInData.token);
     }
     await fetchUser();
   };
