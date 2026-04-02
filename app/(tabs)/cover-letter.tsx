@@ -336,6 +336,11 @@ export default function CoverLetterScreen() {
           numberOfLines={4}
           textAlignVertical="top"
         />
+        {cvSummary.trim().length > 0 && cvSummary.trim().length < 20 ? (
+          <Text style={styles.cvSummaryWarning}>
+            Add a brief CV summary for a more personalised letter
+          </Text>
+        ) : null}
 
         {/* Section 3: Generate */}
         <View style={styles.sectionHeader}>
@@ -583,6 +588,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   textarea: { height: 100, paddingTop: 13 },
+  cvSummaryWarning: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: -10,
+    marginBottom: 14,
+    paddingHorizontal: 2,
+  },
   textareaLarge: { height: 140, paddingTop: 13 },
 
   // Tone

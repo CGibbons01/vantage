@@ -306,6 +306,7 @@ export default function JobsScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
+  const [matchingUnavailable, setMatchingUnavailable] = useState(false);
 
   const runJobMatching = useCallback(async (fetchedJobs: Job[]) => {
     if (!isSubscribed || fetchedJobs.length === 0) return;
@@ -328,11 +329,13 @@ export default function JobsScreen() {
       };
       const result = await authenticatedPost<MatchResponse>('/api/jobs/match', payload);
       console.log('[Jobs] AI matching complete, got', result.matches?.length, 'matches');
-      const map: Record<string, MatchResult> = {};
-      result.matches?.forEach(m => { map[m.job_id] = m; });
-      setMatchMap(map);
+      const newMap: Record<string, MatchResult> = {};
+      result.matches?.forEach(m => { newMap[m.job_id] = m; });
+      setMatchMap(prev => ({ ...prev, ...newMap }));
+      setMatchingUnavailable(false);
     } catch (e: any) {
       console.error('[Jobs] AI matching error:', e);
+      setMatchingUnavailable(true);
     }
   }, [isSubscribed]);
 
@@ -355,18 +358,18 @@ export default function JobsScreen() {
       const newJobs = data?.jobs ?? [];
       console.log(`[Jobs] Got ${newJobs.length} jobs`);
 
+      const total = data?.total ?? 0;
+
       if (append) {
-        setJobs(prev => {
-          const combined = [...prev, ...newJobs];
-          runJobMatching(combined);
-          return combined;
-        });
+        setJobs(prev => [...prev, ...newJobs]);
+        runJobMatching(newJobs);
       } else {
         setJobs(newJobs);
         setMatchMap({});
+        setMatchingUnavailable(false);
         runJobMatching(newJobs);
       }
-      setHasMore(newJobs.length >= 10);
+      setHasMore((pageNum * 10) < total);
       setPage(pageNum);
       setSearched(true);
     } catch (e: any) {
@@ -517,6 +520,12 @@ export default function JobsScreen() {
       {error ? (
         <View style={styles.errorBanner}>
           <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+
+      {matchingUnavailable && !error ? (
+        <View style={styles.matchingUnavailableBanner}>
+          <Text style={styles.matchingUnavailableText}>AI matching unavailable</Text>
         </View>
       ) : null}
 
@@ -675,6 +684,17 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error,
   },
   errorText: { color: COLORS.error, fontSize: 13 },
+  matchingUnavailableBanner: {
+    marginHorizontal: 20,
+    backgroundColor: COLORS.surfaceSecondary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  matchingUnavailableText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '500' },
   listContent: { paddingHorizontal: 20, paddingBottom: 120, paddingTop: 4 },
   jobCard: {
     backgroundColor: COLORS.surfaceSecondary,
