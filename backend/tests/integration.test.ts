@@ -536,10 +536,11 @@ describe("API Integration Tests", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        applicant_name: "John Doe",
         job_title: "Senior Software Engineer",
-        company: "Tech Corp",
+        company_name: "Tech Corp",
         job_description: "We are seeking a senior engineer with 5+ years of experience in full-stack development",
-        cv_text: "John Doe\nExperienced full-stack developer with 5 years in software development\nSkills: JavaScript, TypeScript, React, Node.js",
+        cv_summary: "Experienced full-stack developer with 5 years in software development\nSkills: JavaScript, TypeScript, React, Node.js",
         tone: "professional",
       }),
     });
@@ -555,7 +556,7 @@ describe("API Integration Tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         job_title: "Senior Developer",
-        // missing required: company, job_description, cv_text
+        // missing required: applicant_name, company_name, job_description, cv_summary
       }),
     });
     await expectStatus(res, 400);
@@ -567,22 +568,19 @@ describe("API Integration Tests", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        cover_letter: "Dear Hiring Manager,\nI am interested in the Senior Developer position at Tech Corp.",
-        candidate_name: "John Doe",
-        job_title: "Senior Developer",
-        company: "Tech Corp",
+        content: "Dear Hiring Manager,\nI am interested in the Senior Developer position at Tech Corp.",
+        title: "John_Doe_Cover_Letter",
       }),
     });
     await expectStatus(res, 200);
   });
 
-  test("Export cover letter as PDF - missing required cover_letter field", async () => {
+  test("Export cover letter as PDF - missing required content field", async () => {
     const res = await authenticatedApi("/api/cover-letter/export-pdf", authToken, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        job_title: "Senior Developer",
-        company: "Tech Corp",
+        title: "My Cover Letter",
       }),
     });
     await expectStatus(res, 400);
@@ -728,10 +726,11 @@ describe("API Integration Tests", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        applicant_name: "John Doe",
         job_title: "Developer",
-        company: "Tech Corp",
+        company_name: "Tech Corp",
         job_description: "Job description",
-        cv_text: "CV content",
+        cv_summary: "CV content",
       }),
     });
     await expectStatus(res, 401);
@@ -743,6 +742,7 @@ describe("API Integration Tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content: "CV content",
+        title: "My_CV",
       }),
     });
     await expectStatus(res, 401);
@@ -753,7 +753,8 @@ describe("API Integration Tests", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        cover_letter: "Sample letter",
+        content: "Sample letter",
+        title: "My_Cover_Letter",
       }),
     });
     await expectStatus(res, 401);

@@ -5,13 +5,49 @@ import { generateText } from 'ai';
 import { z } from 'zod';
 import PDFDocument from 'pdfkit';
 import mammoth from 'mammoth';
+import { eq } from 'drizzle-orm';
+import * as schema from '../db/schema/schema.js';
 import type { App } from '../index.js';
 import { createBearerAuth } from '../auth-utils.js';
 
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
-// Request body interfaces
+// Zod Schemas
+const cvGenerateSchema = z.object({
+  cv_text: z.string(),
+  sections: z.object({
+    professional_summary: z.string(),
+    experience: z.string(),
+    education: z.string(),
+    skills: z.string(),
+    achievements: z.string(),
+  }),
+  score: z.number().min(0).max(100),
+});
+
+const cvImproveSchema = z.object({
+  improved_cv_text: z.string(),
+  suggestions: z.array(z.string()),
+  score_before: z.number().min(0).max(100),
+  score_after: z.number().min(0).max(100),
+});
+
+const cvParseSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+  phone: z.string(),
+  job_title: z.string(),
+  skills: z.array(z.string()),
+  summary: z.string(),
+});
+
+const coverLetterSchema = z.object({
+  cover_letter: z.string(),
+  word_count: z.number(),
+});
+
+// Request interfaces
 interface GenerateCVBody {
   name: string;
   email: string;
@@ -30,22 +66,16 @@ interface ImproveCVBody {
 
 interface ExportPDFBody {
   content: string;
-  title?: string;
+  title: string;
 }
 
 interface GenerateCoverLetterBody {
+  applicant_name: string;
   job_title: string;
-  company: string;
+  company_name: string;
   job_description: string;
-  cv_text: string;
-  tone?: 'professional' | 'enthusiastic' | 'concise';
-}
-
-interface ExportCoverLetterPDFBody {
-  cover_letter: string;
-  candidate_name?: string;
-  job_title?: string;
-  company?: string;
+  cv_summary: string;
+  tone: 'professional' | 'enthusiastic' | 'concise';
 }
 
 export function registerAIRoutes(app: App, fastify: FastifyInstance) {
@@ -63,29 +93,8 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
           name: { type: 'string' },
           email: { type: 'string' },
           target_role: { type: 'string' },
-          experience: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                title: { type: 'string' },
-                company: { type: 'string' },
-                duration: { type: 'string' },
-                description: { type: 'string' },
-              },
-            },
-          },
-          education: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                degree: { type: 'string' },
-                institution: { type: 'string' },
-                year: { type: 'string' },
-              },
-            },
-          },
+          experience: { type: 'array' },
+          education: { type: 'array' },
           skills: { type: 'array', items: { type: 'string' } },
           summary: { type: 'string' },
         },
@@ -95,16 +104,8 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
           type: 'object',
           properties: {
             cv_text: { type: 'string' },
-            sections: {
-              type: 'object',
-              properties: {
-                professional_summary: { type: 'string' },
-                experience: { type: 'string' },
-                education: { type: 'string' },
-                skills: { type: 'string' },
-                achievements: { type: 'string' },
-              },
-            },
+            sections: { type: 'object' },
+            score: { type: 'number' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -125,80 +126,46 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
     app.logger.info({ userId: session.user.id, name, target_role }, 'Generating CV');
 
     try {
-      const experienceText = experience.map((exp: any) =>
-        `- ${exp.title} at ${exp.company} (${exp.duration}): ${exp.description}`
-      ).join('\n') || 'No experience provided';
-
-      const educationText = education.map((edu: any) =>
-        `- ${edu.degree} from ${edu.institution} (${edu.year})`
-      ).join('\n') || 'No education provided';
-
-      const skillsText = skills.length > 0 ? skills.join(', ') : 'No skills provided';
-
-      const prompt = `Generate a professional, ATS-optimized CV for ${name} (${email}) targeting a ${target_role} position.
-
-Personal Information:
-- Name: ${name}
-- Email: ${email}
-- Target Role: ${target_role}
-
-Experience:
-${experienceText}
-
-Education:
-${educationText}
-
-Skills:
-${skillsText}
-
-Summary:
-${summary || 'Not provided'}
-
-Create a comprehensive CV with the following sections:
-1. Professional Summary (tailored to the target role)
-2. Experience (formatted professionally with bullet points)
-3. Education (formatted professionally)
-4. Skills (organized by category if possible)
-5. Achievements (key accomplishments from their background)
-
-Return ONLY a valid JSON object with two keys:
-- "cv_text": the full CV as plain text with section headers
-- "sections": an object with keys: professional_summary, experience, education, skills, achievements
-
-No markdown code fences, just pure JSON.`;
-
-      const { text: response } = await generateText({
-        model: gateway('openai/gpt-4o'),
-        prompt,
+      const { text } = await generateText({
+        model: gateway('google/gemini-3-flash'),
+        prompt: `You are an expert CV writer. Create a professional, ATS-optimised CV for a ${target_role} role for ${name}. Use strong action verbs, quantify achievements where possible, and ensure the CV is tailored to the target role. Return ONLY a valid JSON object with structure: {"cv_text":"string","sections":{"professional_summary":"string","experience":"string","education":"string","skills":"string","achievements":"string"},"score":number(0-100)}. Input data: ${JSON.stringify(request.body)}. Return only the JSON, no other text.`,
       });
 
-      let parsed: any = {};
-      try {
-        parsed = JSON.parse(response);
-      } catch (parseErr) {
-        app.logger.warn({ err: parseErr }, 'Failed to parse JSON, attempting to extract');
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No valid JSON found in response');
-        }
+      app.logger.debug({ textLength: text.length }, 'generateText result');
+
+      // Parse the JSON response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not extract JSON from response');
       }
 
-      app.logger.info({ userId: session.user.id, name }, 'CV generated successfully');
-      return {
-        cv_text: parsed.cv_text || '',
-        sections: {
-          professional_summary: parsed.sections?.professional_summary || '',
-          experience: parsed.sections?.experience || '',
-          education: parsed.sections?.education || '',
-          skills: parsed.sections?.skills || '',
-          achievements: parsed.sections?.achievements || '',
-        },
-      };
+      const response = JSON.parse(jsonMatch[0]);
+      cvGenerateSchema.parse(response);
+
+      // Update profiles table
+      const existingProfile = await app.db.query.profiles.findFirst({
+        where: eq(schema.profiles.userId, session.user.id),
+      });
+
+      if (existingProfile) {
+        await app.db.update(schema.profiles)
+          .set({ cvText: response.cv_text, cvScore: response.score, updatedAt: new Date() })
+          .where(eq(schema.profiles.userId, session.user.id));
+      } else {
+        await app.db.insert(schema.profiles).values({
+          userId: session.user.id,
+          cvText: response.cv_text,
+          cvScore: response.score,
+          updatedAt: new Date(),
+        });
+      }
+
+      app.logger.info({ userId: session.user.id, score: response.score }, 'CV generated successfully');
+      return response;
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to generate CV');
-      return reply.status(500).send({ error: 'Failed to generate CV' });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to generate CV');
+      return reply.status(500).send({ error: 'Failed to generate CV', details: errorMsg });
     }
   });
 
@@ -213,10 +180,7 @@ No markdown code fences, just pure JSON.`;
         properties: {
           cv_text: { type: 'string' },
           target_role: { type: 'string' },
-          focus_areas: {
-            type: 'array',
-            items: { type: 'string', enum: ['impact_statements', 'keywords', 'formatting', 'achievements', 'summary'] },
-          },
+          focus_areas: { type: 'array', items: { type: 'string' } },
         },
       },
       response: {
@@ -224,7 +188,7 @@ No markdown code fences, just pure JSON.`;
           type: 'object',
           properties: {
             improved_cv_text: { type: 'string' },
-            suggestions: { type: 'array', items: { type: 'string' } },
+            suggestions: { type: 'array' },
             score_before: { type: 'number' },
             score_after: { type: 'number' },
           },
@@ -247,69 +211,38 @@ No markdown code fences, just pure JSON.`;
     app.logger.info({ userId: session.user.id, target_role }, 'Improving CV');
 
     try {
-      const focusText = focus_areas.length > 0
-        ? `Pay special attention to improving these areas: ${focus_areas.join(', ')}`
-        : '';
-
-      const prompt = `Analyze and improve the following CV for a ${target_role} position. ${focusText}
-
-Original CV:
-${cv_text}
-
-Please:
-1. Score the original CV out of 100 for fit with the ${target_role} role
-2. Improve the CV to better match the ${target_role} position, focusing on:
-   - Strengthening impact statements and quantifying achievements
-   - Adding relevant industry keywords
-   - Improving formatting and readability
-   - Highlighting relevant achievements
-   - Crafting a stronger professional summary
-3. Score the improved CV out of 100
-4. List 3-5 specific improvements made
-
-Return ONLY a valid JSON object with keys:
-- "improved_cv_text": the full improved CV as plain text
-- "suggestions": array of specific improvement suggestions made
-- "score_before": original CV score (0-100)
-- "score_after": improved CV score (0-100)
-
-No markdown code fences, just pure JSON.`;
-
-      const { text: response } = await generateText({
-        model: gateway('openai/gpt-4o'),
-        prompt,
+      const { text } = await generateText({
+        model: gateway('google/gemini-3-flash'),
+        prompt: `You are an expert CV coach. Improve this CV for a ${target_role} role, focusing on: ${focus_areas.join(', ') || 'general improvement'}. Provide specific improvements, a score before and after, and actionable suggestions. Return ONLY a valid JSON object with structure: {"improved_cv_text":"string","suggestions":["string"],"score_before":number,"score_after":number}. CV: ${cv_text}. Return only the JSON, no other text.`,
       });
 
-      let parsed: any = {};
-      try {
-        parsed = JSON.parse(response);
-      } catch (parseErr) {
-        app.logger.warn({ err: parseErr }, 'Failed to parse JSON, attempting to extract');
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('No valid JSON found in response');
-        }
+      // Parse the JSON response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not extract JSON from response');
       }
 
-      app.logger.info({ userId: session.user.id, scoreBefore: parsed.score_before, scoreAfter: parsed.score_after }, 'CV improved successfully');
-      return {
-        improved_cv_text: parsed.improved_cv_text || '',
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
-        score_before: Number(parsed.score_before) || 0,
-        score_after: Number(parsed.score_after) || 0,
-      };
+      const response = JSON.parse(jsonMatch[0]);
+      cvImproveSchema.parse(response);
+
+      // Update profiles table
+      await app.db.update(schema.profiles)
+        .set({ cvText: response.improved_cv_text, cvScore: response.score_after, updatedAt: new Date() })
+        .where(eq(schema.profiles.userId, session.user.id));
+
+      app.logger.info({ userId: session.user.id, scoreBefore: response.score_before, scoreAfter: response.score_after }, 'CV improved successfully');
+      return response;
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to improve CV');
-      return reply.status(500).send({ error: 'Failed to improve CV' });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to improve CV');
+      return reply.status(500).send({ error: 'Failed to improve CV', details: errorMsg });
     }
   });
 
   // POST /api/cv/parse
   fastify.post('/api/cv/parse', {
     schema: {
-      description: 'Parse an uploaded CV file and extract structured data',
+      description: 'Parse an uploaded CV file',
       tags: ['ai', 'cv'],
       consumes: ['multipart/form-data'],
       response: {
@@ -317,17 +250,7 @@ No markdown code fences, just pure JSON.`;
           type: 'object',
           properties: {
             text: { type: 'string' },
-            parsed: {
-              type: 'object',
-              properties: {
-                name: { type: ['string', 'null'] },
-                email: { type: ['string', 'null'] },
-                phone: { type: ['string', 'null'] },
-                job_title: { type: ['string', 'null'] },
-                skills: { type: 'array', items: { type: 'string' } },
-                summary: { type: ['string', 'null'] },
-              },
-            },
+            parsed: { type: 'object' },
           },
         },
         400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -347,114 +270,74 @@ No markdown code fences, just pure JSON.`;
         return reply.status(400).send({ error: 'No file provided' });
       }
 
-      const mimeType = data.mimetype;
+      const filename = data.filename.toLowerCase();
       const buffer = await data.toBuffer();
-
-      app.logger.debug({ mimeType, size: buffer.length }, 'File received');
-
       let cvText = '';
 
-      // Extract text based on MIME type
-      if (mimeType === 'application/pdf') {
+      // Extract text based on file type
+      if (filename.endsWith('.pdf')) {
         try {
           const pdfData = await pdfParse(buffer);
           cvText = pdfData.text || '';
-        } catch (pdfErr) {
-          app.logger.warn({ err: pdfErr }, 'PDF parsing failed, using UTF-8 fallback');
+        } catch (err) {
+          app.logger.warn({ err }, 'PDF parsing failed');
           cvText = buffer.toString('utf-8');
         }
-      } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+      } else if (filename.endsWith('.docx')) {
         try {
           const result = await mammoth.extractRawText({ buffer });
           cvText = result.value || '';
-        } catch (docxErr) {
-          app.logger.warn({ err: docxErr }, 'DOCX parsing failed, using UTF-8 fallback');
+        } catch (err) {
+          app.logger.warn({ err }, 'DOCX parsing failed');
           cvText = buffer.toString('utf-8');
         }
-      } else if (mimeType === 'application/msword') {
-        // DOC format: best-effort extraction
-        cvText = buffer.toString('utf-8').replace(/[^\x20-\x7E\n\t]/g, ' ').trim();
       } else {
-        return reply.status(400).send({ error: 'Unsupported file type. Please upload PDF, DOCX, or DOC.' });
+        return reply.status(400).send({ error: 'Unsupported file format. Please upload a PDF or DOCX file.' });
       }
 
       if (!cvText || cvText.trim().length === 0) {
         return reply.status(400).send({ error: 'Could not extract text from file' });
       }
 
-      // Parse with GPT-4o
-      app.logger.debug({}, 'Parsing CV text with AI');
-
-      const prompt = `Extract structured information from the following CV text. Return ONLY a JSON object with these keys:
-- "name": the candidate's name (string or null)
-- "email": the candidate's email (string or null)
-- "phone": the candidate's phone number (string or null)
-- "job_title": the candidate's current or most recent job title (string or null)
-- "skills": an array of skills listed in the CV
-- "summary": a brief professional summary or objective (string or null)
-
-If a field is not found, use null.
-
-CV Text:
-${cvText}
-
-Return ONLY a valid JSON object, no markdown code fences.`;
-
-      const { text: response } = await generateText({
-        model: gateway('openai/gpt-4o'),
-        prompt,
+      // Parse structured data
+      const { text: parseText } = await generateText({
+        model: gateway('google/gemini-3-flash'),
+        prompt: `Extract structured information from this CV text. Return ONLY a valid JSON object with structure: {"name":"string","email":"string","phone":"string","job_title":"string","skills":["string"],"summary":"string"}. CV text: ${cvText}. Return only the JSON, no other text.`,
       });
 
-      let parsed: any = {};
-      try {
-        parsed = JSON.parse(response);
-      } catch (parseErr) {
-        app.logger.warn({ err: parseErr }, 'Failed to parse JSON, attempting to extract');
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          parsed = { name: null, email: null, phone: null, job_title: null, skills: [], summary: null };
-        }
+      // Parse the JSON response
+      const jsonMatch = parseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not extract JSON from response');
       }
 
+      const parsed = JSON.parse(jsonMatch[0]);
+      cvParseSchema.parse(parsed);
+
       app.logger.info({ userId: session.user.id, name: parsed.name }, 'CV parsed successfully');
-      return {
-        text: cvText,
-        parsed: {
-          name: parsed.name || null,
-          email: parsed.email || null,
-          phone: parsed.phone || null,
-          job_title: parsed.job_title || null,
-          skills: Array.isArray(parsed.skills) ? parsed.skills : [],
-          summary: parsed.summary || null,
-        },
-      };
+      return { text: cvText, parsed };
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to parse CV');
-      return reply.status(500).send({ error: 'Failed to parse CV' });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to parse CV');
+      return reply.status(500).send({ error: 'Failed to parse CV', details: errorMsg });
     }
   });
 
   // POST /api/cv/export-pdf
   fastify.post('/api/cv/export-pdf', {
     schema: {
-      description: 'Export CV content as a PDF file',
+      description: 'Export CV as PDF',
       tags: ['ai', 'cv'],
       body: {
         type: 'object',
-        required: ['content'],
+        required: ['content', 'title'],
         properties: {
           content: { type: 'string' },
           title: { type: 'string' },
         },
       },
       response: {
-        200: {
-          type: 'string',
-          format: 'binary',
-          description: 'PDF file',
-        },
+        200: { type: 'string', format: 'binary' },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' } } },
@@ -464,7 +347,7 @@ Return ONLY a valid JSON object, no markdown code fences.`;
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { content, title = 'cv' } = request.body;
+    const { content, title } = request.body;
 
     if (!content) {
       return reply.status(400).send({ error: 'content is required' });
@@ -473,38 +356,32 @@ Return ONLY a valid JSON object, no markdown code fences.`;
     app.logger.info({ userId: session.user.id, title }, 'Exporting CV as PDF');
 
     try {
-      const doc = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument();
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('error', (err) => {
-        app.logger.error({ err }, 'PDF generation error');
-      });
 
-      // Add title if provided
-      if (title) {
-        doc.fontSize(16).font('Helvetica-Bold').text(title, { underline: true });
-        doc.moveDown(1);
-      }
+      // Add title
+      doc.fontSize(24).font('Helvetica-Bold').text(title || 'CV');
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+      doc.moveDown();
 
       // Add content
-      doc.fontSize(11).font('Helvetica').text(content);
+      const lines = content.split('\n');
+      doc.fontSize(11).font('Helvetica');
+      for (const line of lines) {
+        doc.text(line);
+      }
 
       doc.end();
 
       return new Promise<void>((resolve, reject) => {
         doc.on('end', () => {
           const pdf = Buffer.concat(chunks);
-          const sanitizedTitle = title
-            .replace(/\s+/g, '_')
-            .replace(/[^a-zA-Z0-9_]/g, '')
-            || 'cv';
-
           reply.header('Content-Type', 'application/pdf');
-          reply.header('Content-Disposition', `attachment; filename="${sanitizedTitle}.pdf"`);
+          reply.header('Content-Disposition', `attachment; filename="${title || 'cv'}.pdf"`);
           reply.send(pdf);
-
-          app.logger.info({ userId: session.user.id, title }, 'CV exported as PDF successfully');
+          app.logger.info({ userId: session.user.id }, 'CV exported as PDF successfully');
           resolve();
         });
         doc.on('error', reject);
@@ -518,16 +395,17 @@ Return ONLY a valid JSON object, no markdown code fences.`;
   // POST /api/cover-letter/generate
   fastify.post('/api/cover-letter/generate', {
     schema: {
-      description: 'Generate a professional cover letter using AI',
+      description: 'Generate a cover letter using AI',
       tags: ['ai', 'cover-letter'],
       body: {
         type: 'object',
-        required: ['job_title', 'company', 'job_description', 'cv_text'],
+        required: ['applicant_name', 'job_title', 'company_name', 'job_description', 'cv_summary'],
         properties: {
+          applicant_name: { type: 'string' },
           job_title: { type: 'string' },
-          company: { type: 'string' },
+          company_name: { type: 'string' },
           job_description: { type: 'string' },
-          cv_text: { type: 'string' },
+          cv_summary: { type: 'string' },
           tone: { type: 'string', enum: ['professional', 'enthusiastic', 'concise'], default: 'professional' },
         },
       },
@@ -548,127 +426,96 @@ Return ONLY a valid JSON object, no markdown code fences.`;
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { job_title, company, job_description, cv_text, tone = 'professional' } = request.body;
+    const { applicant_name, job_title, company_name, job_description, cv_summary, tone = 'professional' } = request.body;
 
-    if (!job_title || !company || !job_description || !cv_text) {
-      return reply.status(400).send({ error: 'job_title, company, job_description, and cv_text are required' });
+    if (!applicant_name || !job_title || !company_name || !job_description || !cv_summary) {
+      return reply.status(400).send({ error: 'All fields are required' });
     }
 
-    app.logger.info({ userId: session.user.id, company, job_title }, 'Generating cover letter');
+    app.logger.info({ userId: session.user.id, company: company_name, jobTitle: job_title }, 'Generating cover letter');
 
     try {
-      const toneGuide = {
-        professional: 'formal and authoritative',
-        enthusiastic: 'energetic and passionate',
-        concise: 'brief and punchy (max 250 words)',
-      };
-
-      const prompt = `Write a ${tone} cover letter for a ${job_title} position at ${company}.
-
-Job Description:
-${job_description}
-
-Candidate CV:
-${cv_text}
-
-Write a compelling, personalized cover letter. Tone: ${toneGuide[tone as keyof typeof toneGuide]}.
-
-Structure:
-1. Strong opening hook that grabs attention
-2. Highlight 2-3 most relevant experiences/skills from the CV that match the job
-3. Why specifically this company (use the company name)
-4. Strong closing with call to action
-
-Do NOT include placeholders. Make it specific and personal. Return ONLY the cover letter text, no markdown formatting.`;
-
-      const { text: coverLetterText } = await generateText({
-        model: gateway('openai/gpt-4o'),
-        prompt,
+      const { text } = await generateText({
+        model: gateway('google/gemini-3-flash'),
+        prompt: `You are an expert cover letter writer. Write a compelling, personalised cover letter for ${applicant_name} applying for ${job_title} at ${company_name}. Tone: ${tone}. The letter should be 3-4 paragraphs, reference specific details from the job description, and highlight relevant experience from the CV summary. Do NOT use generic phrases like 'I am writing to apply'. Return ONLY a valid JSON object with structure: {"cover_letter":"string","word_count":number}. Job description: ${job_description}. CV summary: ${cv_summary}. Return only the JSON, no other text.`,
       });
 
-      const wordCount = coverLetterText.split(/\s+/).length;
+      // Parse the JSON response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not extract JSON from response');
+      }
 
-      app.logger.info({ userId: session.user.id, company, wordCount }, 'Cover letter generated successfully');
-      return { cover_letter: coverLetterText, word_count: wordCount };
+      const response = JSON.parse(jsonMatch[0]);
+      coverLetterSchema.parse(response);
+
+      // Insert into cover_letters table
+      await app.db.insert(schema.coverLetters).values({
+        userId: session.user.id,
+        jobTitle: job_title,
+        companyName: company_name,
+        content: response.cover_letter,
+        wordCount: response.word_count,
+        createdAt: new Date(),
+      });
+
+      app.logger.info({ userId: session.user.id, wordCount: response.word_count }, 'Cover letter generated successfully');
+      return response;
     } catch (error) {
-      app.logger.error({ err: error, userId: session.user.id }, 'Failed to generate cover letter');
-      return reply.status(500).send({ error: 'Failed to generate cover letter' });
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to generate cover letter');
+      return reply.status(500).send({ error: 'Failed to generate cover letter', details: errorMsg });
     }
   });
 
   // POST /api/cover-letter/export-pdf
   fastify.post('/api/cover-letter/export-pdf', {
     schema: {
-      description: 'Export cover letter as a PDF file',
+      description: 'Export cover letter as PDF',
       tags: ['ai', 'cover-letter'],
       body: {
         type: 'object',
-        required: ['cover_letter'],
+        required: ['content', 'title'],
         properties: {
-          cover_letter: { type: 'string' },
-          candidate_name: { type: 'string' },
-          job_title: { type: 'string' },
-          company: { type: 'string' },
+          content: { type: 'string' },
+          title: { type: 'string' },
         },
       },
       response: {
-        200: {
-          type: 'string',
-          format: 'binary',
-          description: 'PDF file',
-        },
+        200: { type: 'string', format: 'binary' },
         400: { type: 'object', properties: { error: { type: 'string' } } },
         401: { type: 'object', properties: { error: { type: 'string' } } },
         500: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Body: ExportCoverLetterPDFBody }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: ExportPDFBody }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { cover_letter, candidate_name, job_title, company } = request.body;
+    const { content, title } = request.body;
 
-    if (!cover_letter) {
-      return reply.status(400).send({ error: 'cover_letter is required' });
+    if (!content) {
+      return reply.status(400).send({ error: 'content is required' });
     }
 
-    app.logger.info({ userId: session.user.id, company }, 'Exporting cover letter as PDF');
+    app.logger.info({ userId: session.user.id, title }, 'Exporting cover letter as PDF');
 
     try {
-      const doc = new PDFDocument({ margin: 72 });
+      const doc = new PDFDocument();
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('error', (err) => {
-        app.logger.error({ err }, 'PDF generation error');
-      });
 
-      // Date at top right
-      const today = new Date();
-      const dateStr = `${String(today.getDate()).padStart(2, '0')} ${today.toLocaleString('en-GB', { month: 'long' })} ${today.getFullYear()}`;
-      doc.fontSize(10).text(dateStr, { align: 'right' });
-      doc.moveDown(2);
+      // Add title
+      doc.fontSize(24).font('Helvetica-Bold').text(title || 'Cover Letter');
+      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+      doc.moveDown();
 
-      // Candidate info
-      if (candidate_name) {
-        doc.fontSize(14).font('Helvetica-Bold').text(candidate_name);
-      }
-      if (job_title || company) {
-        doc.fontSize(10).fillColor('#666').text([job_title, company].filter(Boolean).join(' at '));
-      }
-      doc.fillColor('#000').moveDown(1);
-
-      // Horizontal rule
-      doc.moveTo(72, doc.y).lineTo(522, doc.y).stroke();
-      doc.moveDown(1.5);
-
-      // Cover letter body
-      doc.fontSize(11).lineGap(6).text(cover_letter, { align: 'justify' });
-      doc.moveDown(2);
-
-      // Footer
-      if (candidate_name) {
-        doc.fontSize(10).fillColor('#999').text(candidate_name, { align: 'center' });
+      // Add content
+      const lines = content.split('\n');
+      doc.fontSize(11).font('Helvetica');
+      for (const line of lines) {
+        doc.text(line);
       }
 
       doc.end();
@@ -677,9 +524,8 @@ Do NOT include placeholders. Make it specific and personal. Return ONLY the cove
         doc.on('end', () => {
           const pdf = Buffer.concat(chunks);
           reply.header('Content-Type', 'application/pdf');
-          reply.header('Content-Disposition', 'attachment; filename="cover-letter.pdf"');
+          reply.header('Content-Disposition', `attachment; filename="${title || 'cover-letter'}.pdf"`);
           reply.send(pdf);
-
           app.logger.info({ userId: session.user.id }, 'Cover letter exported as PDF successfully');
           resolve();
         });

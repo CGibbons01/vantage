@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, real, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, real, timestamp, integer } from 'drizzle-orm/pg-core';
 import { user } from './auth-schema.js';
 
 export const profiles = pgTable('profiles', {
@@ -33,5 +33,15 @@ export const jobApplications = pgTable('job_applications', {
   status: text('status').notNull().default('saved'),
   appliedAt: timestamp('applied_at', { withTimezone: true }),
   notes: text('notes'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const coverLetters = pgTable('cover_letters', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  jobTitle: text('job_title').notNull(),
+  companyName: text('company_name').notNull(),
+  content: text('content').notNull(),
+  wordCount: integer('word_count').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
