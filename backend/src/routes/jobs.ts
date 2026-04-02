@@ -11,17 +11,19 @@ const jobSchema = z.object({
   company: z.string(),
   location: z.string(),
   description: z.string(),
-  salary_min: z.number(),
-  salary_max: z.number(),
+  salary_min: z.number().nullable(),
+  salary_max: z.number().nullable(),
   redirect_url: z.string(),
   created: z.string(),
   category: z.string(),
-  contract_type: z.enum(['full_time', 'part_time', 'contract']),
+  contract_type: z.string(),
   job_type: z.string(),
 });
 
 const jobsResponseSchema = z.object({
   jobs: z.array(jobSchema),
+  total: z.number(),
+  page: z.number(),
 });
 
 const matchSchema = z.object({
@@ -47,7 +49,7 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
   // GET /api/jobs/search
   fastify.get('/api/jobs/search', {
     schema: {
-      description: 'Search for jobs using AI-generated mock data',
+      description: 'Search for jobs using Adzuna API',
       tags: ['jobs'],
       querystring: {
         type: 'object',
@@ -55,6 +57,7 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
           keywords: { type: 'string', description: 'Job keywords (optional)' },
           location: { type: 'string', description: 'Location filter (optional)' },
           page: { type: 'integer', default: 1, description: 'Page number' },
+          country: { type: 'string', default: 'gb', description: 'Country code (gb, us, au, ca, de, fr, in, nl, nz, pl, ru, sg, za, br, at, be)' },
         },
       },
       response: {
@@ -67,42 +70,74 @@ export function registerJobRoutes(app: App, fastify: FastifyInstance) {
           },
         },
         401: { type: 'object', properties: { error: { type: 'string' } } },
-        500: { type: 'object', properties: { error: { type: 'string' } } },
+        502: { type: 'object', properties: { error: { type: 'string' } } },
       },
     },
-  }, async (request: FastifyRequest<{ Querystring: { keywords?: string; location?: string; page?: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Querystring: { keywords?: string; location?: string; page?: string; country?: string } }>, reply: FastifyReply) => {
     const session = await requireAuth(request, reply);
     if (!session) return;
 
-    const { keywords = '', location = '', page: pageStr = '1' } = request.query;
+    const { keywords = '', location = '', page: pageStr = '1', country = 'gb' } = request.query;
     const page = parseInt(pageStr, 10) || 1;
 
-    app.logger.info({ userId: session.user.id, keywords, location, page }, 'Searching jobs');
+    app.logger.info({ userId: session.user.id, keywords, location, page, country }, 'Searching jobs');
 
     try {
-      app.logger.debug({ keywords, location, page }, 'Calling generateText for jobs');
-      const { text } = await generateText({
-        model: gateway('google/gemini-3-flash'),
-        prompt: `Generate 10 realistic UK job listings for the role "${keywords || 'Software Engineer'}" in "${location || 'London'}". Return ONLY a valid JSON array with this structure for each job: {"id":"string","title":"string","company":"string","location":"string","description":"string","salary_min":number,"salary_max":number,"redirect_url":"string","created":"string","category":"string","contract_type":"full_time|part_time|contract","job_type":"string"}. Return only the JSON array, no other text.`,
-      });
+      // Build Adzuna URL
+      const appId = process.env.ADZUNA_APP_ID;
+      const appKey = process.env.ADZUNA_APP_KEY;
 
-      app.logger.debug({ textLength: text.length }, 'generateText response length');
-
-      // Parse the JSON response
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        throw new Error('Could not extract JSON from response');
+      if (!appId || !appKey) {
+        app.logger.error({ userId: session.user.id }, 'Adzuna credentials not configured');
+        return reply.status(502).send({ error: 'Job search unavailable. Please try again.' });
       }
 
-      const jobs = JSON.parse(jsonMatch[0]);
-      jobsResponseSchema.parse({ jobs });
+      const url = new URL(`https://api.adzuna.com/v1/api/jobs/${country}/search/${page}`);
+      url.searchParams.append('app_id', appId);
+      url.searchParams.append('app_key', appKey);
+      url.searchParams.append('results_per_page', '10');
+      url.searchParams.append('content-type', 'application/json');
 
-      app.logger.info({ jobCount: jobs.length, page }, 'Jobs generated successfully');
-      return { jobs, total: jobs.length, page };
+      if (keywords.trim()) {
+        url.searchParams.append('what', keywords);
+      }
+      if (location.trim()) {
+        url.searchParams.append('where', location);
+      }
+
+      app.logger.debug({ url: url.toString().replace(appKey, '***') }, 'Fetching from Adzuna');
+
+      const response = await fetch(url.toString());
+
+      if (!response.ok) {
+        app.logger.warn({ status: response.status, userId: session.user.id }, 'Adzuna API returned non-2xx status');
+        return reply.status(502).send({ error: 'Job search unavailable. Please try again.' });
+      }
+
+      const data = await response.json() as any;
+
+      // Map Adzuna results to our format
+      const jobs = (data.results || []).map((result: any) => ({
+        id: String(result.id),
+        title: result.title,
+        company: result.company?.display_name || 'Unknown Company',
+        location: result.location?.display_name || 'Unknown Location',
+        description: result.description || '',
+        salary_min: result.salary_min || null,
+        salary_max: result.salary_max || null,
+        redirect_url: result.redirect_url,
+        created: result.created,
+        category: result.category?.label || 'Unknown',
+        contract_type: result.contract_type || 'permanent',
+        job_type: result.contract_time || 'full_time',
+      }));
+
+      app.logger.info({ jobCount: jobs.length, page, total: data.count }, 'Jobs retrieved successfully');
+      return { jobs, total: data.count, page };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to search jobs');
-      return reply.status(500).send({ error: 'Failed to search jobs', details: errorMsg });
+      return reply.status(502).send({ error: 'Job search unavailable. Please try again.' });
     }
   });
 

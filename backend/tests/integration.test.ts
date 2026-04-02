@@ -530,6 +530,17 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 400);
   });
 
+  test("Export CV as PDF - missing required title field", async () => {
+    const res = await authenticatedApi("/api/cv/export-pdf", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "John Doe\nSoftware Engineer\nSkills: TypeScript, React",
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
   // Cover Letter Generation AI endpoint
   test("Generate cover letter", async () => {
     const res = await authenticatedApi("/api/cover-letter/generate", authToken, {
@@ -581,6 +592,17 @@ describe("API Integration Tests", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: "My Cover Letter",
+      }),
+    });
+    await expectStatus(res, 400);
+  });
+
+  test("Export cover letter as PDF - missing required title field", async () => {
+    const res = await authenticatedApi("/api/cover-letter/export-pdf", authToken, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: "Dear Hiring Manager,\nI am very interested in this position.",
       }),
     });
     await expectStatus(res, 400);
