@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "Vantage ai recruitment",
-    "slug": "vantage-ai-recruitment",
-    "version": "1.0.0",
+    "slug": "vantage",
+    "version": "1.0.15",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-lca.png",
     "userInterfaceStyle": "automatic",
@@ -32,7 +32,8 @@
         "foregroundImage": "./assets/images/app-icon-lca.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.gibbonsrecruitment.VantageAI"
+      "package": "com.gibbonsrecruitment.VantageAI",
+      "versionCode": 16
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
