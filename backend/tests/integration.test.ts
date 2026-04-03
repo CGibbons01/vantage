@@ -438,6 +438,33 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 400);
   });
 
+  // CV Score endpoint - multipart file upload
+  test("Score CV file", async () => {
+    const fileContent = "John Doe\nSoftware Engineer at Tech Corp\nSkills: JavaScript, TypeScript, React, Node.js";
+    const file = createTestFile("resume.pdf", fileContent, "application/pdf");
+    const form = new FormData();
+    form.append("cv", file);
+
+    const res = await authenticatedApi("/api/cv/score", authToken, {
+      method: "POST",
+      body: form,
+    });
+    await expectStatus(res, 200);
+    const data = await res.json();
+    expect(data.score).toBeDefined();
+    expect(data.parsed).toBeDefined();
+    expect(data.suggestions).toBeDefined();
+  });
+
+  test("Score CV file - missing file", async () => {
+    const form = new FormData();
+    const res = await authenticatedApi("/api/cv/score", authToken, {
+      method: "POST",
+      body: form,
+    });
+    await expectStatus(res, 400);
+  });
+
   // CV Generation AI endpoint
   test("Generate CV", async () => {
     const res = await authenticatedApi("/api/cv/generate", authToken, {
@@ -705,6 +732,32 @@ describe("API Integration Tests", () => {
     await expectStatus(res, 401);
   });
 
+  test("Parse CV file without auth", async () => {
+    const fileContent = "Sample CV";
+    const file = createTestFile("resume.pdf", fileContent, "application/pdf");
+    const form = new FormData();
+    form.append("cv", file);
+
+    const res = await api("/api/cv/parse", {
+      method: "POST",
+      body: form,
+    });
+    await expectStatus(res, 401);
+  });
+
+  test("Score CV file without auth", async () => {
+    const fileContent = "Sample CV";
+    const file = createTestFile("resume.pdf", fileContent, "application/pdf");
+    const form = new FormData();
+    form.append("cv", file);
+
+    const res = await api("/api/cv/score", {
+      method: "POST",
+      body: form,
+    });
+    await expectStatus(res, 401);
+  });
+
   test("Generate CV without auth", async () => {
     const res = await api("/api/cv/generate", {
       method: "POST",
@@ -726,19 +779,6 @@ describe("API Integration Tests", () => {
         cv_text: "Sample CV",
         target_role: "Senior Developer",
       }),
-    });
-    await expectStatus(res, 401);
-  });
-
-  test("Parse CV file without auth", async () => {
-    const fileContent = "Sample CV";
-    const file = createTestFile("resume.pdf", fileContent, "application/pdf");
-    const form = new FormData();
-    form.append("cv", file);
-
-    const res = await api("/api/cv/parse", {
-      method: "POST",
-      body: form,
     });
     await expectStatus(res, 401);
   });

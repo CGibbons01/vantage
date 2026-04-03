@@ -42,6 +42,29 @@ const cvParseSchema = z.object({
   summary: z.string(),
 });
 
+const cvScoreSchema = z.object({
+  score: z.number().min(0).max(100),
+  parsed: z.object({
+    name: z.string(),
+    email: z.string(),
+    phone: z.string(),
+    summary: z.string(),
+    skills: z.array(z.string()),
+    experience: z.array(z.object({
+      title: z.string(),
+      company: z.string(),
+      duration: z.string(),
+      description: z.string(),
+    })),
+    education: z.array(z.object({
+      degree: z.string(),
+      institution: z.string(),
+      year: z.string(),
+    })),
+  }),
+  suggestions: z.array(z.string()),
+});
+
 const coverLetterSchema = z.object({
   cover_letter: z.string(),
   word_count: z.number(),
@@ -320,6 +343,136 @@ export function registerAIRoutes(app: App, fastify: FastifyInstance) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to parse CV');
       return reply.status(500).send({ error: 'Failed to parse CV', details: errorMsg });
+    }
+  });
+
+  // POST /api/cv/score
+  fastify.post('/api/cv/score', {
+    schema: {
+      description: 'Analyse and score an uploaded CV file',
+      tags: ['ai', 'cv'],
+      consumes: ['multipart/form-data'],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            score: { type: 'number' },
+            parsed: { type: 'object' },
+            suggestions: { type: 'array' },
+          },
+        },
+        400: { type: 'object', properties: { error: { type: 'string' } } },
+        401: { type: 'object', properties: { error: { type: 'string' } } },
+        500: { type: 'object', properties: { error: { type: 'string' } } },
+      },
+    },
+  }, async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await requireAuth(request, reply);
+    if (!session) return;
+
+    app.logger.info({ userId: session.user.id }, 'Scoring CV file');
+
+    try {
+      const data = await request.file();
+      if (!data) {
+        return reply.status(400).send({ error: 'No file provided' });
+      }
+
+      const filename = data.filename.toLowerCase();
+      const buffer = await data.toBuffer();
+      let cvText = '';
+
+      // Extract text based on file type
+      if (filename.endsWith('.pdf') || data.mimetype === 'application/pdf') {
+        try {
+          const pdfData = await pdfParse(buffer);
+          cvText = pdfData.text || '';
+        } catch (err) {
+          app.logger.warn({ err }, 'PDF parsing failed');
+          cvText = buffer.toString('utf-8');
+        }
+      } else if (filename.endsWith('.docx') || data.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        try {
+          const result = await mammoth.extractRawText({ buffer });
+          cvText = result.value || '';
+        } catch (err) {
+          app.logger.warn({ err }, 'DOCX parsing failed');
+          cvText = buffer.toString('utf-8');
+        }
+      } else {
+        return reply.status(400).send({ error: 'Unsupported file type. Please upload a PDF or DOCX file.' });
+      }
+
+      if (!cvText || cvText.trim().length === 0) {
+        return reply.status(400).send({ error: 'Could not extract text from file' });
+      }
+
+      // Call AI with system prompt for CV analysis
+      const { text } = await generateText({
+        model: gateway('google/gemini-3-flash'),
+        system: 'You are an expert CV/resume analyser and ATS specialist. Analyse the provided CV text and return a JSON object with exactly this structure:\n{"score":<integer 0-100>,"parsed":{"name":"","email":"","phone":"","summary":"","skills":[],"experience":[{"title":"","company":"","duration":"","description":""}],"education":[{"degree":"","institution":"","year":""}]},"suggestions":[]}\nReturn ONLY valid JSON, no markdown, no code fences, no explanation.',
+        prompt: cvText,
+      });
+
+      // Parse the JSON response, stripping markdown code fences
+      let jsonText = text.trim();
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.substring(7);
+      }
+      if (jsonText.startsWith('```')) {
+        jsonText = jsonText.substring(3);
+      }
+      if (jsonText.endsWith('```')) {
+        jsonText = jsonText.substring(0, jsonText.length - 3);
+      }
+      jsonText = jsonText.trim();
+
+      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not extract JSON from response');
+      }
+
+      const response = JSON.parse(jsonMatch[0]);
+      cvScoreSchema.parse(response);
+
+      // Upsert into profiles table
+      const existingProfile = await app.db.query.profiles.findFirst({
+        where: eq(schema.profiles.userId, session.user.id),
+      });
+
+      if (existingProfile) {
+        await app.db.update(schema.profiles)
+          .set({
+            cvText: cvText,
+            cvScore: response.score,
+            skills: JSON.stringify(response.parsed.skills),
+            summary: response.parsed.summary,
+            improvementTips: JSON.stringify(response.suggestions),
+            experience: JSON.stringify(response.parsed.experience),
+            education: JSON.stringify(response.parsed.education),
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.profiles.userId, session.user.id));
+      } else {
+        await app.db.insert(schema.profiles).values({
+          userId: session.user.id,
+          cvText: cvText,
+          cvScore: response.score,
+          skills: JSON.stringify(response.parsed.skills),
+          summary: response.parsed.summary,
+          improvementTips: JSON.stringify(response.suggestions),
+          experience: JSON.stringify(response.parsed.experience),
+          education: JSON.stringify(response.parsed.education),
+          updatedAt: new Date(),
+        });
+      }
+
+      app.logger.info({ userId: session.user.id, score: response.score }, 'CV scored successfully');
+      return response;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      app.logger.error({ err: error, userId: session.user.id, message: errorMsg }, 'Failed to score CV');
+      return reply.status(500).send({ error: 'Failed to analyse CV. Please try again.' });
     }
   });
 
