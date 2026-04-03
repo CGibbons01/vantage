@@ -1,57 +1,77 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { Platform } from "react-native";
-import * as WebBrowser from "expo-web-browser";
+import React, { useEffect, useState } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { supabase } from '@/lib/auth';
 
-// Must be called at module level to dismiss the in-app browser on native after OAuth redirect
+// Dismiss the in-app browser on native after OAuth redirect
 WebBrowser.maybeCompleteAuthSession();
 
-type Status = "processing" | "success" | "error";
+type Status = 'processing' | 'success' | 'error';
 
 export default function AuthCallbackScreen() {
-  const [status, setStatus] = useState<Status>("processing");
-  const [message, setMessage] = useState("Processing authentication...");
+  const router = useRouter();
+  const [status, setStatus] = useState<Status>('processing');
+  const [message, setMessage] = useState('Processing authentication...');
 
   useEffect(() => {
-    if (Platform.OS !== "web") return;
     handleCallback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleCallback = () => {
+  const handleCallback = async () => {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("better_auth_token");
-      const error = urlParams.get("error");
+      // On web, extract tokens from the URL hash and set the Supabase session
+      if (typeof window !== 'undefined' && window.location?.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
 
-      if (error) {
-        setStatus("error");
-        setMessage(`Authentication failed: ${error}`);
-        window.opener?.postMessage({ type: "oauth-error", error }, "*");
-        return;
+        if (accessToken && refreshToken) {
+          console.log('[AuthCallback] Setting session from URL hash tokens');
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) {
+            console.error('[AuthCallback] setSession error:', error.message);
+            setStatus('error');
+            setMessage('Authentication failed. Please try again.');
+            return;
+          }
+          setStatus('success');
+          setMessage('Authentication successful! Redirecting...');
+          setTimeout(() => router.replace('/(tabs)'), 1000);
+          return;
+        }
+
+        const errorParam = hashParams.get('error_description') || hashParams.get('error');
+        if (errorParam) {
+          console.error('[AuthCallback] OAuth error in URL:', errorParam);
+          setStatus('error');
+          setMessage(`Authentication failed: ${errorParam}`);
+          return;
+        }
       }
 
-      if (token) {
-        setStatus("success");
-        setMessage("Authentication successful! Closing...");
-        window.opener?.postMessage({ type: "oauth-success", token }, "*");
-        setTimeout(() => window.close(), 1000);
-      } else {
-        setStatus("error");
-        setMessage("No authentication token received");
-        window.opener?.postMessage({ type: "oauth-error", error: "No token" }, "*");
-      }
+      // On native, Supabase session is set via setSession in AuthContext after WebBrowser returns.
+      // Just navigate back to the app.
+      console.log('[AuthCallback] No hash tokens — navigating to tabs');
+      setStatus('success');
+      setMessage('Authentication successful! Redirecting...');
+      setTimeout(() => router.replace('/(tabs)'), 800);
     } catch (err) {
-      setStatus("error");
-      setMessage("Failed to process authentication");
-      console.error("Auth callback error:", err);
+      console.error('[AuthCallback] Unexpected error:', err);
+      setStatus('error');
+      setMessage('Failed to process authentication');
     }
   };
 
   return (
     <View style={styles.container}>
-      {status === "processing" && <ActivityIndicator size="large" color="#007AFF" />}
-      {status === "success" && <Text style={styles.successIcon}>✓</Text>}
-      {status === "error" && <Text style={styles.errorIcon}>✗</Text>}
+      {status === 'processing' && <ActivityIndicator size="large" color="#7C3AED" />}
+      {status === 'success' && <Text style={styles.successIcon}>✓</Text>}
+      {status === 'error' && <Text style={styles.errorIcon}>✗</Text>}
       <Text style={styles.message}>{message}</Text>
     </View>
   );
@@ -60,23 +80,23 @@ export default function AuthCallbackScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
   },
   successIcon: {
     fontSize: 48,
-    color: "#34C759",
+    color: '#34C759',
   },
   errorIcon: {
     fontSize: 48,
-    color: "#FF3B30",
+    color: '#FF3B30',
   },
   message: {
     fontSize: 18,
     marginTop: 20,
-    textAlign: "center",
-    color: "#333",
+    textAlign: 'center',
+    color: '#333',
   },
 });

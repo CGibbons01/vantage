@@ -1,9 +1,8 @@
-import Constants from "expo-constants";
-import { Platform } from "react-native";
-import * as SecureStore from "expo-secure-store";
-import { BEARER_TOKEN_KEY } from "@/lib/auth";
+import Constants from 'expo-constants';
+import { supabase } from '@/lib/auth';
 
-export const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || "https://93xu69nwqqwz659axrd8dvwjn3dqgwta.app.specular.dev";
+export const BACKEND_URL =
+  Constants.expoConfig?.extra?.backendUrl || 'https://dokdulxrrpumtinlbyiv.supabase.co';
 
 export const isBackendConfigured = (): boolean => {
   return !!BACKEND_URL && BACKEND_URL.length > 0;
@@ -11,13 +10,10 @@ export const isBackendConfigured = (): boolean => {
 
 export const getBearerToken = async (): Promise<string | null> => {
   try {
-    if (Platform.OS === "web") {
-      return localStorage.getItem(BEARER_TOKEN_KEY);
-    } else {
-      return await SecureStore.getItemAsync(BEARER_TOKEN_KEY);
-    }
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
   } catch (error) {
-    console.error("[API] Error retrieving bearer token:", error);
+    console.error('[API] Error retrieving bearer token:', error);
     return null;
   }
 };
@@ -27,17 +23,17 @@ export const apiCall = async <T = any>(
   options?: RequestInit
 ): Promise<T> => {
   if (!isBackendConfigured()) {
-    throw new Error("Backend URL not configured. Please rebuild the app.");
+    throw new Error('Backend URL not configured. Please rebuild the app.');
   }
 
   const url = `${BACKEND_URL}${endpoint}`;
-  const method = options?.method || "GET";
+  const method = options?.method || 'GET';
   console.log(`[API] ${method} ${url}`);
 
   const fetchOptions: RequestInit = {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   };
@@ -55,9 +51,9 @@ export const apiCall = async <T = any>(
     response = await fetch(url, fetchOptions);
   } catch (networkError: any) {
     const message =
-      networkError?.message && !networkError.message.toLowerCase().includes("failed to fetch")
+      networkError?.message && !networkError.message.toLowerCase().includes('failed to fetch')
         ? networkError.message
-        : "Network error: unable to reach the server. Check your internet connection and try again.";
+        : 'Network error: unable to reach the server. Check your internet connection and try again.';
     console.error(`[API] Network error for ${method} ${url}:`, message);
     throw new Error(message);
   }
@@ -74,33 +70,33 @@ export const apiCall = async <T = any>(
 };
 
 export const apiGet = async <T = any>(endpoint: string): Promise<T> => {
-  return apiCall<T>(endpoint, { method: "GET" });
+  return apiCall<T>(endpoint, { method: 'GET' });
 };
 
 export const apiPost = async <T = any>(endpoint: string, data: any): Promise<T> => {
   return apiCall<T>(endpoint, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify(data),
   });
 };
 
 export const apiPut = async <T = any>(endpoint: string, data: any): Promise<T> => {
   return apiCall<T>(endpoint, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify(data),
   });
 };
 
 export const apiPatch = async <T = any>(endpoint: string, data: any): Promise<T> => {
   return apiCall<T>(endpoint, {
-    method: "PATCH",
+    method: 'PATCH',
     body: JSON.stringify(data),
   });
 };
 
 export const apiDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
   return apiCall<T>(endpoint, {
-    method: "DELETE",
+    method: 'DELETE',
     body: JSON.stringify(data),
   });
 };
@@ -112,7 +108,7 @@ export const authenticatedApiCall = async <T = any>(
   const token = await getBearerToken();
 
   if (!token) {
-    console.warn("[API] No auth token found — making unauthenticated request to", endpoint);
+    console.warn('[API] No auth token found — making unauthenticated request to', endpoint);
     return apiCall<T>(endpoint, options);
   }
 
@@ -126,33 +122,33 @@ export const authenticatedApiCall = async <T = any>(
 };
 
 export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> => {
-  return authenticatedApiCall<T>(endpoint, { method: "GET" });
+  return authenticatedApiCall<T>(endpoint, { method: 'GET' });
 };
 
 export const authenticatedPost = async <T = any>(endpoint: string, data: any): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, {
-    method: "POST",
+    method: 'POST',
     body: JSON.stringify(data),
   });
 };
 
 export const authenticatedPut = async <T = any>(endpoint: string, data: any): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, {
-    method: "PUT",
+    method: 'PUT',
     body: JSON.stringify(data),
   });
 };
 
 export const authenticatedPatch = async <T = any>(endpoint: string, data: any): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, {
-    method: "PATCH",
+    method: 'PATCH',
     body: JSON.stringify(data),
   });
 };
 
 export const authenticatedDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
   return authenticatedApiCall<T>(endpoint, {
-    method: "DELETE",
+    method: 'DELETE',
     body: JSON.stringify(data),
   });
 };

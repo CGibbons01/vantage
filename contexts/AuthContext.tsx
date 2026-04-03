@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
-import { Platform } from "react-native";
-import * as Linking from "expo-linking";
-import * as AppleAuthentication from "expo-apple-authentication";
-import * as SecureStore from "expo-secure-store";
-import { authClient, setBearerToken, clearAuthTokens, initAuthStorage } from "@/lib/auth";
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { Platform } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
+import { supabase } from '@/lib/auth';
 
 interface User {
   id: string;
@@ -25,151 +25,59 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function openOAuthPopup(provider: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const popupUrl = `${window.location.origin}/auth-popup?provider=${provider}`;
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-
-    const popup = window.open(
-      popupUrl,
-      "oauth-popup",
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
-    );
-
-    if (!popup) {
-      reject(new Error("Failed to open popup. Please allow popups."));
-      return;
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === "oauth-success" && event.data?.token) {
-        window.removeEventListener("message", handleMessage);
-        clearInterval(checkClosed);
-        resolve(event.data.token);
-      } else if (event.data?.type === "oauth-error") {
-        window.removeEventListener("message", handleMessage);
-        clearInterval(checkClosed);
-        reject(new Error(event.data.error || "OAuth failed"));
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    const checkClosed = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(checkClosed);
-        window.removeEventListener("message", handleMessage);
-        reject(new Error("Authentication cancelled"));
-      }
-    }, 500);
-  });
+function supabaseUserToUser(supabaseUser: any): User {
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email ?? '',
+    name: supabaseUser.user_metadata?.name ?? supabaseUser.user_metadata?.full_name,
+    image: supabaseUser.user_metadata?.avatar_url,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // Prevent concurrent fetchUser calls from stomping each other
   const fetchingRef = useRef(false);
 
   useEffect(() => {
-    // Initial session check on mount — with a 3-second timeout safety net
+    // Listen to Supabase auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log('[AuthContext] onAuthStateChange — event:', _event, 'user:', session?.user?.email ?? null);
+      if (session?.user) {
+        setUser(supabaseUserToUser(session.user));
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    // Initial session fetch
     fetchUser();
 
-    if (Platform.OS !== "web") {
-      // Re-fetch after OAuth deep-link callback so the session is picked up
-      const subscription = Linking.addEventListener("url", (event) => {
-        const url = event.url;
-        if (url.startsWith("vantageairecruitment://auth-callback")) {
-          console.log("[AuthContext] Deep-link auth callback received — re-fetching session");
-          setTimeout(() => fetchUser(), 800);
-        }
-      });
-
-      // Refresh session every 5 minutes (silent — does NOT set loading=true)
-      const intervalId = setInterval(() => {
-        silentRefresh();
-      }, 5 * 60 * 1000);
-
-      return () => {
-        subscription.remove();
-        clearInterval(intervalId);
-      };
-    }
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
-
-  // Extract and store the bearer token from the expo plugin's SecureStore cookie
-  const syncTokenFromCookie = async () => {
-    if (Platform.OS === "web") return;
-    try {
-      const cookie = await SecureStore.getItemAsync("vantageairecruitment_cookie");
-      if (cookie) {
-        const match = cookie.match(/better-auth\.session_token=([^;]+)/);
-        if (match) {
-          console.log("[AuthContext] syncTokenFromCookie — token extracted from cookie");
-          await setBearerToken(match[1]);
-        } else {
-          console.log("[AuthContext] syncTokenFromCookie — cookie present but no session_token match:", cookie.substring(0, 60));
-        }
-      } else {
-        console.log("[AuthContext] syncTokenFromCookie — no cookie found in SecureStore");
-      }
-    } catch (e) {
-      console.warn("[AuthContext] syncTokenFromCookie error:", e);
-    }
-  };
-
-  // Silent refresh: updates user state without triggering the loading spinner
-  const silentRefresh = async () => {
-    if (fetchingRef.current) return;
-    fetchingRef.current = true;
-    try {
-      const session = await authClient.getSession();
-      if (session?.data?.user) {
-        setUser(session.data.user as User);
-        await syncTokenFromCookie();
-      }
-      // Don't clear user on silent refresh failure — keep existing session
-    } catch {
-      // Ignore silent refresh errors
-    } finally {
-      fetchingRef.current = false;
-    }
-  };
 
   const fetchUser = async () => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     setLoading(true);
-
-    // 3-second timeout — if getSession hangs, treat as logged out
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
-
     try {
-      // Ensure SecureStore tokens are loaded into the sync memory cache
-      // before getSession() tries to read cookies synchronously.
-      await initAuthStorage();
-
-      console.log("[AuthContext] fetchUser — calling getSession");
-      const session = await Promise.race([
-        authClient.getSession(),
-        timeoutPromise,
-      ]);
-
-      if (session?.data?.user) {
-        console.log("[AuthContext] fetchUser — session found, user:", session.data.user.email);
-        setUser(session.data.user as User);
-        await syncTokenFromCookie();
-      } else {
-        console.log("[AuthContext] fetchUser — no session, user is null");
+      console.log('[AuthContext] fetchUser — calling getSession');
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.warn('[AuthContext] fetchUser — getSession error:', error.message);
         setUser(null);
-        await clearAuthTokens();
+      } else if (data.session?.user) {
+        console.log('[AuthContext] fetchUser — session found, user:', data.session.user.email);
+        setUser(supabaseUserToUser(data.session.user));
+      } else {
+        console.log('[AuthContext] fetchUser — no session, user is null');
+        setUser(null);
       }
     } catch (error) {
-      console.error("[AuthContext] fetchUser error:", error);
+      console.error('[AuthContext] fetchUser error:', error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -178,61 +86,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    console.log("[AuthContext] signInWithEmail called for:", email);
-    const { data, error } = await authClient.signIn.email({ email, password });
-    console.log("[AuthContext] signIn.email response — data:", data, "error:", error);
+    console.log('[AuthContext] signInWithEmail called for:', email);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    console.log('[AuthContext] signInWithPassword response — user:', data?.user?.email ?? null, 'error:', error?.message ?? null);
     if (error) {
-      throw new Error(error.message || "Sign in failed. Please check your credentials.");
+      throw new Error(error.message || 'Sign in failed. Please check your credentials.');
     }
-    if (data?.token) {
-      console.log("[AuthContext] signInWithEmail — token received directly from sign-in response");
-      await setBearerToken(data.token);
-    }
-    await fetchUser();
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
-    console.log("[AuthContext] signUpWithEmail called for:", email);
-    const { data, error } = await authClient.signUp.email({ email, password, name });
-    console.log("[AuthContext] signUp.email response — data:", data, "error:", error);
+    console.log('[AuthContext] signUpWithEmail called for:', email);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name } },
+    });
+    console.log('[AuthContext] signUp response — user:', data?.user?.email ?? null, 'error:', error?.message ?? null);
     if (error) {
-      throw new Error(error.message || "Sign up failed. Please try again.");
+      throw new Error(error.message || 'Sign up failed. Please try again.');
     }
-    // Auto sign-in after signup so the session is established immediately
-    console.log("[AuthContext] signUpWithEmail — auto signing in after signup");
-    const { data: signInData, error: signInError } = await authClient.signIn.email({ email, password });
-    console.log("[AuthContext] auto signIn after signup — data:", signInData, "error:", signInError);
-    if (signInError) {
-      console.warn("[AuthContext] auto sign-in after signup failed:", signInError.message);
+    // If email confirmation is disabled, the user is signed in immediately.
+    // If confirmation is required, data.session will be null — inform the user.
+    if (!data.session) {
+      console.log('[AuthContext] signUpWithEmail — email confirmation required, auto signing in');
+      // Attempt immediate sign-in in case confirmation is not required
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) {
+        // Confirmation is likely required — surface a friendly message
+        throw new Error('Account created! Please check your email to confirm your account before signing in.');
+      }
     }
-    if (signInData?.token) {
-      console.log("[AuthContext] signUpWithEmail — token received from auto sign-in response");
-      await setBearerToken(signInData.token);
+  };
+
+  const signInWithGoogle = async () => {
+    console.log('[AuthContext] signInWithGoogle called');
+    if (Platform.OS === 'web') {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/auth-callback` },
+      });
+      if (error) throw new Error(error.message || 'Google sign in failed');
+      return;
+    }
+
+    const redirectUrl = makeRedirectUri({ scheme: 'vantageairecruitment', path: 'auth-callback' });
+    console.log('[AuthContext] signInWithGoogle — redirectUrl:', redirectUrl);
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+    });
+    if (error) throw new Error(error.message || 'Google sign in failed');
+
+    if (data?.url) {
+      console.log('[AuthContext] signInWithGoogle — opening browser session');
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      console.log('[AuthContext] signInWithGoogle — browser result type:', result.type);
+      if (result.type === 'success') {
+        const url = new URL(result.url);
+        const hashParams = new URLSearchParams(url.hash.substring(1));
+        const accessToken = url.searchParams.get('access_token') || hashParams.get('access_token');
+        const refreshToken = url.searchParams.get('refresh_token') || hashParams.get('refresh_token');
+        if (accessToken && refreshToken) {
+          console.log('[AuthContext] signInWithGoogle — setting session from tokens');
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) throw new Error(sessionError.message || 'Failed to set session');
+        } else {
+          console.warn('[AuthContext] signInWithGoogle — no tokens found in callback URL');
+        }
+      } else if (result.type === 'cancel' || result.type === 'dismiss') {
+        throw new Error('Authentication cancelled');
+      }
     }
     await fetchUser();
   };
 
-  const signInWithSocial = async (provider: string) => {
-    if (Platform.OS === "web") {
-      const token = await openOAuthPopup(provider);
-      await setBearerToken(token);
-      await fetchUser();
-    } else {
-      const { error } = await authClient.signIn.social({
-        provider,
-        callbackURL: "vantageairecruitment://auth-callback",
-      });
-      if (error) {
-        throw new Error(error.message || "Social sign in failed");
-      }
-      await fetchUser();
-    }
-  };
-
-  const signInWithGoogle = () => signInWithSocial("google");
-
   const signInWithApple = async () => {
-    if (Platform.OS === "ios") {
+    console.log('[AuthContext] signInWithApple called');
+    if (Platform.OS === 'ios') {
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
@@ -240,31 +174,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ],
       });
       if (!credential.identityToken) {
-        throw new Error("No identity token received from Apple");
+        throw new Error('No identity token received from Apple');
       }
-      const { error } = await authClient.signIn.social({
-        provider: "apple",
-        idToken: credential.identityToken,
+      console.log('[AuthContext] signInWithApple — got identity token, calling signInWithIdToken');
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
       });
-      if (error) {
-        throw new Error(error.message || "Apple sign in failed");
-      }
+      if (error) throw new Error(error.message || 'Apple sign in failed');
       await fetchUser();
     } else {
-      await signInWithSocial("apple");
+      // Web / Android — use OAuth redirect
+      if (Platform.OS === 'web') {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'apple',
+          options: { redirectTo: `${window.location.origin}/auth-callback` },
+        });
+        if (error) throw new Error(error.message || 'Apple sign in failed');
+        return;
+      }
+
+      const redirectUrl = makeRedirectUri({ scheme: 'vantageairecruitment', path: 'auth-callback' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      });
+      if (error) throw new Error(error.message || 'Apple sign in failed');
+
+      if (data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        if (result.type === 'success') {
+          const url = new URL(result.url);
+          const hashParams = new URLSearchParams(url.hash.substring(1));
+          const accessToken = url.searchParams.get('access_token') || hashParams.get('access_token');
+          const refreshToken = url.searchParams.get('refresh_token') || hashParams.get('refresh_token');
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          }
+        } else if (result.type === 'cancel' || result.type === 'dismiss') {
+          throw new Error('Authentication cancelled');
+        }
+      }
+      await fetchUser();
     }
   };
 
   const signOut = async () => {
-    console.log("[AuthContext] signOut called");
+    console.log('[AuthContext] signOut called');
     try {
-      await authClient.signOut();
+      const { error } = await supabase.auth.signOut();
+      if (error) console.error('[AuthContext] signOut error:', error.message);
     } catch (error) {
-      console.error("[AuthContext] signOut API error:", error);
+      console.error('[AuthContext] signOut exception:', error);
     } finally {
       setUser(null);
-      await clearAuthTokens();
-      console.log("[AuthContext] signOut complete — user cleared");
+      console.log('[AuthContext] signOut complete — user cleared');
     }
   };
 
@@ -289,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth must be used within AuthProvider");
+    throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
 }
