@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Vantage ai recruitment",
-    "slug": "vantage",
+    "slug": "vantage-ai-recruitment",
     "version": "1.0.15",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-lca.png",
