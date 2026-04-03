@@ -176,8 +176,8 @@ export default function HomeScreen() {
       console.log('[Dashboard] File read as base64, length:', base64.length);
 
       const token = await getBearerToken();
-      console.log('[Dashboard] POST /api/cv/score — sending base64 JSON');
-      const response = await fetch(`${BACKEND_URL}/api/cv/score`, {
+      console.log('[Dashboard] POST cv-score — sending base64 JSON to Supabase edge function');
+      const response = await fetch(`https://dokdulxrrpumtinlbyiv.supabase.co/functions/v1/cv-score`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
