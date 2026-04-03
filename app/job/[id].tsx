@@ -11,11 +11,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MapPin, DollarSign, Tag, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react-native';
+import { MapPin, Tag, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const SAVED_JOBS_KEY = 'saved_jobs';
 
 interface Job {
   id: string;
@@ -28,67 +30,57 @@ interface Job {
   redirect_url: string;
   created: string;
   category?: string;
-}
-
-interface Application {
-  id: string;
-  job_id: string;
-  status: string;
+  contract_type?: string;
+  job_type?: string;
 }
 
 export default function JobDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, jobData } = useLocalSearchParams<{ id: string; jobData?: string }>();
   const insets = useSafeAreaInsets();
 
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [savedApplication, setSavedApplication] = useState<Application | null>(null);
-
-  const fetchJob = useCallback(async () => {
-    console.log('[JobDetail] Fetching job:', id);
-    try {
-      const data = await authenticatedGet<Job>(`/api/jobs/${id}`);
-      setJob(data);
-    } catch (e: any) {
-      console.error('[JobDetail] Fetch error:', e);
-      setError('Could not load job details.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  const checkSaved = useCallback(async () => {
-    console.log('[JobDetail] Checking if job is saved:', id);
-    try {
-      const apps = await authenticatedGet<Application[]>('/api/applications');
-      const existing = Array.isArray(apps) ? apps.find((a) => a.job_id === id) : null;
-      if (existing) setSavedApplication(existing);
-    } catch (e) {
-      // Silently ignore
-    }
-  }, [id]);
 
   useEffect(() => {
-    Promise.all([fetchJob(), checkSaved()]);
-  }, [fetchJob, checkSaved]);
+    console.log('[JobDetail] Loading job:', id);
+    if (jobData) {
+      try {
+        const parsed: Job = JSON.parse(jobData);
+        setJob(parsed);
+        console.log('[JobDetail] Job loaded from params:', parsed.title);
+      } catch (e) {
+        console.error('[JobDetail] Failed to parse jobData param:', e);
+      }
+    }
+    setLoading(false);
+    checkSaved();
+  }, [id, jobData]);
+
+  const checkSaved = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SAVED_JOBS_KEY);
+      const savedIds: string[] = raw ? JSON.parse(raw) : [];
+      setSaved(savedIds.includes(id));
+    } catch (e) {
+      // silently ignore
+    }
+  }, [id]);
 
   const handleSave = async () => {
     if (!job) return;
     console.log('[JobDetail] Save job pressed:', job.id, job.title);
     setSaving(true);
     try {
-      const result = await authenticatedPost<Application>('/api/applications', {
-        job_id: job.id,
-        job_title: job.title,
-        company: job.company,
-        location: job.location,
-        job_url: job.redirect_url,
-        status: 'saved',
-      });
-      setSavedApplication(result);
-      console.log('[JobDetail] Job saved successfully, application id:', result?.id);
+      const raw = await AsyncStorage.getItem(SAVED_JOBS_KEY);
+      const savedIds: string[] = raw ? JSON.parse(raw) : [];
+      if (!savedIds.includes(job.id)) {
+        savedIds.push(job.id);
+        await AsyncStorage.setItem(SAVED_JOBS_KEY, JSON.stringify(savedIds));
+        console.log('[JobDetail] Job saved to local storage');
+      }
+      setSaved(true);
     } catch (e: any) {
       console.error('[JobDetail] Save error:', e);
       Alert.alert('Error', 'Could not save job. Please try again.');
@@ -104,12 +96,6 @@ export default function JobDetailScreen() {
       const canOpen = await Linking.canOpenURL(job.redirect_url);
       if (canOpen) {
         await Linking.openURL(job.redirect_url);
-        if (savedApplication) {
-          try {
-            await authenticatedPut(`/api/applications/${savedApplication.id}`, { status: 'applied' });
-
-          } catch (_) {}
-        }
       } else {
         Alert.alert('Cannot Open Link', 'Unable to open the application URL.');
       }
@@ -124,10 +110,10 @@ export default function JobDetailScreen() {
   const hasSalary = salaryMin != null || salaryMax != null;
   const salaryText = hasSalary
     ? salaryMin && salaryMax
-      ? `$${Math.round(salaryMin / 1000)}k – $${Math.round(salaryMax / 1000)}k/yr`
+      ? `£${Math.round(salaryMin / 1000)}k – £${Math.round(salaryMax / 1000)}k/yr`
       : salaryMin
-      ? `From $${Math.round(salaryMin / 1000)}k/yr`
-      : `Up to $${Math.round((salaryMax ?? 0) / 1000)}k/yr`
+      ? `From £${Math.round(salaryMin / 1000)}k/yr`
+      : `Up to £${Math.round((salaryMax ?? 0) / 1000)}k/yr`
     : null;
 
   const cleanDescription = job?.description?.replace(/<[^>]*>/g, '') ?? '';
@@ -141,10 +127,10 @@ export default function JobDetailScreen() {
     );
   }
 
-  if (error || !job) {
+  if (!job) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorText}>{error || 'Job not found.'}</Text>
+        <Text style={styles.errorText}>Job not found.</Text>
       </View>
     );
   }
@@ -177,7 +163,7 @@ export default function JobDetailScreen() {
           </View>
           {salaryText && (
             <View style={styles.metaChip}>
-              <DollarSign size={13} color={COLORS.textSecondary} />
+              <Text style={styles.poundIcon}>£</Text>
               <Text style={styles.metaChipText}>{salaryText}</Text>
             </View>
           )}
@@ -199,13 +185,13 @@ export default function JobDetailScreen() {
       {/* Bottom Action Buttons */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         <AnimatedPressable
-          style={[styles.saveBtn, savedApplication && styles.savedBtn]}
+          style={[styles.saveBtn, saved && styles.savedBtn]}
           onPress={handleSave}
-          disabled={saving || !!savedApplication}
+          disabled={saving || saved}
         >
           {saving ? (
             <ActivityIndicator color={COLORS.primaryLight} size="small" />
-          ) : savedApplication ? (
+          ) : saved ? (
             <>
               <BookmarkCheck size={18} color={COLORS.success} />
               <Text style={[styles.saveBtnText, { color: COLORS.success }]}>Saved</Text>
@@ -264,6 +250,7 @@ const styles = StyleSheet.create({
   },
   categoryChip: { backgroundColor: COLORS.infoMuted, borderColor: COLORS.info },
   metaChipText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '500' },
+  poundIcon: { fontSize: 13, color: COLORS.textSecondary },
   descCard: {
     backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,

@@ -10,17 +10,15 @@ import {
   RefreshControl,
   Animated,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MapPin, Briefcase, Lock, ChevronRight, DollarSign, ChevronDown, ChevronUp, Clock } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSubscription } from '@/contexts/SubscriptionContext';
-import { authenticatedGet, authenticatedPost } from '@/utils/api';
+import { Search, MapPin, Briefcase, ChevronRight, Clock } from 'lucide-react-native';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 
-const USER_CV_KEY = 'user_cv_text';
+const ADZUNA_APP_ID = '791f9b4e';
+const ADZUNA_APP_KEY = '9db825d4c62b56666cfad5050cdf4cb2';
+const ADZUNA_COUNTRY = 'gb';
 
 interface Job {
   id: string;
@@ -35,24 +33,6 @@ interface Job {
   category?: string;
   contract_type?: string;
   job_type?: string;
-}
-
-interface JobsResponse {
-  jobs: Job[];
-  total?: number;
-  page?: number;
-}
-
-interface MatchResult {
-  job_id: string;
-  match_percentage: number;
-  matched_skills: string[];
-  missing_skills: string[];
-  recommendation: string;
-}
-
-interface MatchResponse {
-  matches: MatchResult[];
 }
 
 function formatPostedDate(dateStr: string): string {
@@ -111,32 +91,15 @@ function JobCardSkeleton() {
   );
 }
 
-function MatchBadge({ pct }: { pct: number }) {
-  const pctNum = Number(pct);
-  const badgeColor = pctNum >= 80 ? COLORS.success : pctNum >= 60 ? COLORS.primaryLight : COLORS.textMuted;
-  const badgeBg = pctNum >= 80 ? COLORS.successMuted : pctNum >= 60 ? COLORS.primaryMuted : 'rgba(100,116,139,0.15)';
-  const pctText = `${pctNum}% Match`;
-  return (
-    <View style={[styles.matchBadge, { backgroundColor: badgeBg, borderColor: badgeColor + '55' }]}>
-      <Text style={[styles.matchBadgeText, { color: badgeColor }]}>{pctText}</Text>
-    </View>
-  );
-}
-
 function JobCard({
   job,
-  matchResult,
-  isSubscribed,
   onPress,
   index,
 }: {
   job: Job;
-  matchResult?: MatchResult;
-  isSubscribed: boolean;
   onPress: () => void;
   index: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(12)).current;
 
@@ -152,15 +115,13 @@ function JobCard({
   const hasSalary = salaryMin != null || salaryMax != null;
   const salaryText = hasSalary
     ? salaryMin && salaryMax
-      ? `$${Math.round(salaryMin / 1000)}k – $${Math.round(salaryMax / 1000)}k`
+      ? `£${Math.round(salaryMin / 1000)}k – £${Math.round(salaryMax / 1000)}k`
       : salaryMin
-      ? `From $${Math.round(salaryMin / 1000)}k`
-      : `Up to $${Math.round((salaryMax ?? 0) / 1000)}k`
+      ? `From £${Math.round(salaryMin / 1000)}k`
+      : `Up to £${Math.round((salaryMax ?? 0) / 1000)}k`
     : null;
 
   const snippet = job.description?.replace(/<[^>]*>/g, '').slice(0, 120) ?? '';
-  const hasMatchData = isSubscribed && matchResult;
-  const hasSkillData = hasMatchData && (matchResult.matched_skills?.length > 0 || matchResult.missing_skills?.length > 0);
   const postedDate = formatPostedDate(job.created);
   const jobType = job.contract_type || job.job_type || null;
   const companyInitial = (job.company?.[0] || 'J').toUpperCase();
@@ -177,13 +138,9 @@ function JobCard({
             <Text style={styles.jobCompany} numberOfLines={1}>{job.company}</Text>
           </View>
           <View style={styles.badgeCol}>
-            {hasMatchData ? (
-              <MatchBadge pct={matchResult.match_percentage} />
-            ) : isSubscribed ? null : (
-              <View style={styles.recommendedBadge}>
-                <Text style={styles.recommendedText}>New</Text>
-              </View>
-            )}
+            <View style={styles.recommendedBadge}>
+              <Text style={styles.recommendedText}>New</Text>
+            </View>
             <ChevronRight size={16} color={COLORS.textMuted} />
           </View>
         </View>
@@ -195,7 +152,7 @@ function JobCard({
           </View>
           {salaryText && (
             <View style={styles.metaItem}>
-              <DollarSign size={12} color={COLORS.textSecondary} />
+              <Text style={styles.poundSign}>£</Text>
               <Text style={styles.metaText}>{salaryText}</Text>
             </View>
           )}
@@ -221,51 +178,6 @@ function JobCard({
         </View>
 
         {snippet ? <Text style={styles.jobSnippet} numberOfLines={2}>{snippet}</Text> : null}
-
-        {hasSkillData && (
-          <AnimatedPressable
-            style={styles.whyMatchRow}
-            onPress={() => {
-              console.log('[Jobs] Why this match? toggled for job:', job.id);
-              setExpanded(v => !v);
-            }}
-          >
-            <Text style={styles.whyMatchText}>Why this match?</Text>
-            {expanded
-              ? <ChevronUp size={14} color={COLORS.primaryLight} />
-              : <ChevronDown size={14} color={COLORS.primaryLight} />
-            }
-          </AnimatedPressable>
-        )}
-
-        {expanded && hasMatchData && (
-          <View style={styles.matchDetails}>
-            {matchResult.matched_skills?.length > 0 && (
-              <View style={styles.skillSection}>
-                <Text style={styles.skillSectionLabel}>Matched skills</Text>
-                <View style={styles.skillChips}>
-                  {matchResult.matched_skills.map((s, i) => (
-                    <View key={i} style={styles.matchedChip}>
-                      <Text style={styles.matchedChipText}>{s}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-            {matchResult.missing_skills?.length > 0 && (
-              <View style={styles.skillSection}>
-                <Text style={styles.skillSectionLabel}>Missing skills</Text>
-                <View style={styles.skillChips}>
-                  {matchResult.missing_skills.map((s, i) => (
-                    <View key={i} style={styles.missingChip}>
-                      <Text style={styles.missingChipText}>{s}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-          </View>
-        )}
       </AnimatedPressable>
     </Animated.View>
   );
@@ -292,13 +204,11 @@ const CATEGORY_CHIPS = [
 export default function JobsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isSubscribed, packages } = useSubscription();
 
   const [keywords, setKeywords] = useState('');
   const [location, setLocation] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [matchMap, setMatchMap] = useState<Record<string, MatchResult>>({});
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -306,68 +216,55 @@ export default function JobsScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
-  const [matchingUnavailable, setMatchingUnavailable] = useState(false);
-
-  const runJobMatching = useCallback(async (fetchedJobs: Job[]) => {
-    if (!isSubscribed || fetchedJobs.length === 0) return;
-    try {
-      const cvText = await AsyncStorage.getItem(USER_CV_KEY);
-      if (!cvText) {
-        console.log('[Jobs] No CV stored, skipping AI matching');
-        return;
-      }
-      console.log('[Jobs] Running AI job matching for', fetchedJobs.length, 'jobs');
-      const payload = {
-        cv_text: cvText,
-        jobs: fetchedJobs.map(j => ({
-          id: j.id,
-          title: j.title,
-          description: j.description?.replace(/<[^>]*>/g, '').slice(0, 500) ?? '',
-          company: j.company,
-          required_skills: [],
-        })),
-      };
-      const result = await authenticatedPost<MatchResponse>('/api/jobs/match', payload);
-      console.log('[Jobs] AI matching complete, got', result.matches?.length, 'matches');
-      const newMap: Record<string, MatchResult> = {};
-      result.matches?.forEach(m => { newMap[m.job_id] = m; });
-      setMatchMap(prev => ({ ...prev, ...newMap }));
-      setMatchingUnavailable(false);
-    } catch (e: any) {
-      console.error('[Jobs] AI matching error:', e);
-      setMatchingUnavailable(true);
-    }
-  }, [isSubscribed]);
 
   const searchJobs = useCallback(async (pageNum = 1, append = false, overrideKeywords?: string) => {
     const kw = overrideKeywords !== undefined ? overrideKeywords : keywords;
-    console.log(`[Jobs] Searching jobs - keywords: "${kw}", location: "${location}", page: ${pageNum}`);
-    if (append) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams();
-      if (kw.trim()) params.set('keywords', kw.trim());
-      if (location.trim()) params.set('location', location.trim());
-      params.set('page', String(pageNum));
+      const params = new URLSearchParams({
+        app_id: ADZUNA_APP_ID,
+        app_key: ADZUNA_APP_KEY,
+        results_per_page: '10',
+        page: String(pageNum),
+        content_type: 'application/json',
+      });
+      if (kw.trim()) params.set('what', kw.trim());
+      if (location.trim()) params.set('where', location.trim());
 
-      const data = await authenticatedGet<JobsResponse>(`/api/jobs/search?${params.toString()}`);
-      const newJobs = data?.jobs ?? [];
-      console.log(`[Jobs] Got ${newJobs.length} jobs`);
+      const url = `https://api.adzuna.com/v1/api/jobs/${ADZUNA_COUNTRY}/search/${pageNum}?${params.toString()}`;
+      console.log('[Jobs] Fetching from Adzuna:', url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('[Jobs] Adzuna error response:', response.status, text.slice(0, 200));
+        throw new Error(`Adzuna error: ${response.status}`);
+      }
+      const data = await response.json();
 
-      const total = data?.total ?? 0;
+      const newJobs: Job[] = (data.results ?? []).map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        company: r.company?.display_name ?? 'Unknown Company',
+        location: r.location?.display_name ?? '',
+        description: r.description ?? '',
+        salary_min: r.salary_min,
+        salary_max: r.salary_max,
+        redirect_url: r.redirect_url,
+        created: r.created,
+        category: r.category?.label,
+        contract_type: r.contract_type,
+        job_type: r.contract_time,
+      }));
 
+      console.log(`[Jobs] Got ${newJobs.length} jobs (total: ${data.count ?? 0})`);
+
+      const total = data.count ?? 0;
       if (append) {
         setJobs(prev => [...prev, ...newJobs]);
-        runJobMatching(newJobs);
       } else {
         setJobs(newJobs);
-        setMatchMap({});
-        setMatchingUnavailable(false);
-        runJobMatching(newJobs);
       }
       setHasMore((pageNum * 10) < total);
       setPage(pageNum);
@@ -380,7 +277,7 @@ export default function JobsScreen() {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [keywords, location, runJobMatching]);
+  }, [keywords, location]);
 
   const handleSearch = () => {
     console.log('[Jobs] Search button pressed - keywords:', keywords, 'location:', location);
@@ -412,39 +309,6 @@ export default function JobsScreen() {
     setRefreshing(true);
     searchJobs(1, false);
   };
-
-  const priceString = packages[0]?.product?.priceString ?? '$15';
-
-  if (!isSubscribed) {
-    return (
-      <View style={[styles.lockedContainer, { paddingTop: insets.top }]}>
-        <View style={styles.lockIconCircle}>
-          <Lock size={36} color={COLORS.primaryLight} />
-        </View>
-        <Text style={styles.lockedTitle}>Premium Feature</Text>
-        <Text style={styles.lockedSubtitle}>
-          Unlock unlimited job search across millions of roles with a Vantage AI Premium subscription.
-        </Text>
-        <AnimatedPressable
-          style={styles.unlockBtn}
-          onPress={() => { console.log('[Jobs] Navigate to paywall'); router.push('/paywall'); }}
-        >
-          <LinearGradient
-            colors={['#7C3AED', '#4F46E5']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.unlockBtnGradient}
-          >
-            <Text style={styles.unlockBtnText}>
-              {'Unlock Job Search — '}
-              {priceString}
-              {'/month'}
-            </Text>
-          </LinearGradient>
-        </AnimatedPressable>
-      </View>
-    );
-  }
 
   const showSkeletons = loading && !refreshing && jobs.length === 0;
 
@@ -523,12 +387,6 @@ export default function JobsScreen() {
         </View>
       ) : null}
 
-      {matchingUnavailable && !error ? (
-        <View style={styles.matchingUnavailableBanner}>
-          <Text style={styles.matchingUnavailableText}>AI matching unavailable</Text>
-        </View>
-      ) : null}
-
       {/* Results */}
       {showSkeletons ? (
         <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
@@ -546,12 +404,16 @@ export default function JobsScreen() {
           renderItem={({ item, index }) => (
             <JobCard
               job={item}
-              matchResult={matchMap[item.id]}
-              isSubscribed={isSubscribed}
               index={index}
               onPress={() => {
                 console.log('[Jobs] Navigate to job detail:', item.id, item.title);
-                router.push(`/job/${item.id}` as any);
+                router.push({
+                  pathname: '/job/[id]',
+                  params: {
+                    id: item.id,
+                    jobData: JSON.stringify(item),
+                  },
+                } as any);
               }}
             />
           )}
@@ -590,41 +452,6 @@ export default function JobsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  lockedContainer: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  lockIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.primaryMuted,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  lockedTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text, marginBottom: 12 },
-  lockedSubtitle: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  unlockBtn: {
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  unlockBtnGradient: {
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  unlockBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   header: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -684,17 +511,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.error,
   },
   errorText: { color: COLORS.error, fontSize: 13 },
-  matchingUnavailableBanner: {
-    marginHorizontal: 20,
-    backgroundColor: COLORS.surfaceSecondary,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  matchingUnavailableText: { color: COLORS.textMuted, fontSize: 12, fontWeight: '500' },
   listContent: { paddingHorizontal: 20, paddingBottom: 120, paddingTop: 4 },
   jobCard: {
     backgroundColor: COLORS.surfaceSecondary,
@@ -717,13 +533,6 @@ const styles = StyleSheet.create({
   },
   jobIconInitial: { fontSize: 16, fontWeight: '800', color: COLORS.primaryLight },
   badgeCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  matchBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-  },
-  matchBadgeText: { fontSize: 11, fontWeight: '700' },
   recommendedBadge: {
     backgroundColor: COLORS.infoMuted,
     borderRadius: 8,
@@ -736,6 +545,7 @@ const styles = StyleSheet.create({
   jobMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   metaText: { fontSize: 12, color: COLORS.textSecondary },
+  poundSign: { fontSize: 12, color: COLORS.textSecondary },
   badgeRow: { flexDirection: 'row', gap: 6, marginBottom: 6, flexWrap: 'wrap' },
   categoryBadge: {
     alignSelf: 'flex-start',
@@ -756,38 +566,6 @@ const styles = StyleSheet.create({
   },
   jobTypeText: { fontSize: 11, fontWeight: '600', color: COLORS.primaryLight },
   jobSnippet: { fontSize: 13, color: COLORS.textMuted, lineHeight: 18 },
-  whyMatchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingTop: 8,
-    marginTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-  },
-  whyMatchText: { fontSize: 12, fontWeight: '600', color: COLORS.primaryLight },
-  matchDetails: { paddingTop: 10, gap: 10 },
-  skillSection: { gap: 6 },
-  skillSectionLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  skillChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  matchedChip: {
-    backgroundColor: COLORS.successMuted,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.3)',
-  },
-  matchedChipText: { fontSize: 11, fontWeight: '600', color: COLORS.success },
-  missingChip: {
-    backgroundColor: COLORS.errorMuted,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
-  },
-  missingChipText: { fontSize: 11, fontWeight: '600', color: COLORS.error },
   emptyState: {
     alignItems: 'center',
     paddingTop: 60,

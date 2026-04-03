@@ -120,81 +120,135 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     console.log('[AuthContext] signInWithGoogle called');
+
     if (Platform.OS === 'web') {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: `${window.location.origin}/auth-callback` },
-      });
-      if (error) throw new Error(error.message || 'Google sign in failed');
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: `${window.location.origin}/auth-callback` },
+        });
+        if (error) throw new Error(error.message || 'Google sign in failed');
+      } catch (e: any) {
+        console.error('[AuthContext] signInWithGoogle web error:', e);
+        throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
+      }
       return;
     }
 
-    const redirectUrl = makeRedirectUri({ scheme: 'vantageairecruitment', path: 'auth-callback' });
+    // Native: use deep link scheme
+    const redirectUrl = makeRedirectUri({
+      scheme: 'vantage-ai-recruitment',
+      path: 'auth-callback',
+    });
     console.log('[AuthContext] signInWithGoogle — redirectUrl:', redirectUrl);
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
-    });
-    if (error) throw new Error(error.message || 'Google sign in failed');
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+        },
+      });
 
-    if (data?.url) {
-      console.log('[AuthContext] signInWithGoogle — opening browser session');
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      console.log('[AuthContext] signInWithGoogle — browser result type:', result.type);
-      if (result.type === 'success') {
-        const url = new URL(result.url);
-        const hashParams = new URLSearchParams(url.hash.substring(1));
-        const accessToken = url.searchParams.get('access_token') || hashParams.get('access_token');
-        const refreshToken = url.searchParams.get('refresh_token') || hashParams.get('refresh_token');
-        if (accessToken && refreshToken) {
-          console.log('[AuthContext] signInWithGoogle — setting session from tokens');
-          const { error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          if (sessionError) throw new Error(sessionError.message || 'Failed to set session');
-        } else {
-          console.warn('[AuthContext] signInWithGoogle — no tokens found in callback URL');
-        }
-      } else if (result.type === 'cancel' || result.type === 'dismiss') {
-        throw new Error('Authentication cancelled');
+      if (error) {
+        console.error('[AuthContext] signInWithGoogle OAuth error:', error.message);
+        throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
       }
+
+      if (data?.url) {
+        console.log('[AuthContext] signInWithGoogle — opening browser session');
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        console.log('[AuthContext] signInWithGoogle — browser result type:', result.type);
+
+        if (result.type === 'success') {
+          const url = new URL(result.url);
+          const hashParams = new URLSearchParams(url.hash.substring(1));
+          const accessToken = url.searchParams.get('access_token') || hashParams.get('access_token');
+          const refreshToken = url.searchParams.get('refresh_token') || hashParams.get('refresh_token');
+
+          // Also check for PKCE code flow
+          const code = url.searchParams.get('code');
+
+          if (accessToken && refreshToken) {
+            console.log('[AuthContext] signInWithGoogle — setting session from tokens');
+            const { error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            if (sessionError) {
+              console.error('[AuthContext] signInWithGoogle setSession error:', sessionError.message);
+              throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
+            }
+          } else if (code) {
+            console.log('[AuthContext] signInWithGoogle — exchanging code for session');
+            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+            if (exchangeError) {
+              console.error('[AuthContext] signInWithGoogle exchangeCode error:', exchangeError.message);
+              throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
+            }
+          } else {
+            console.warn('[AuthContext] signInWithGoogle — no tokens or code found in callback URL');
+            throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
+          }
+        } else if (result.type === 'cancel' || result.type === 'dismiss') {
+          throw new Error('Authentication cancelled');
+        }
+      }
+    } catch (e: any) {
+      if (e.message === 'Authentication cancelled') throw e;
+      console.error('[AuthContext] signInWithGoogle error:', e.message);
+      throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
     }
+
     await fetchUser();
   };
 
   const signInWithApple = async () => {
     console.log('[AuthContext] signInWithApple called');
     if (Platform.OS === 'ios') {
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-      });
-      if (!credential.identityToken) {
-        throw new Error('No identity token received from Apple');
+      try {
+        const credential = await AppleAuthentication.signInAsync({
+          requestedScopes: [
+            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+            AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          ],
+        });
+        if (!credential.identityToken) {
+          throw new Error('No identity token received from Apple');
+        }
+        console.log('[AuthContext] signInWithApple — got identity token, calling signInWithIdToken');
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: 'apple',
+          token: credential.identityToken,
+        });
+        if (error) throw new Error(error.message || 'Apple sign in failed');
+        await fetchUser();
+      } catch (e: any) {
+        // ERR_CANCELED means user dismissed the Apple sheet — treat as cancellation
+        if (e.code === 'ERR_CANCELED' || e.message === 'Authentication cancelled') {
+          throw new Error('Authentication cancelled');
+        }
+        console.error('[AuthContext] signInWithApple error:', e.message);
+        throw e;
       }
-      console.log('[AuthContext] signInWithApple — got identity token, calling signInWithIdToken');
-      const { error } = await supabase.auth.signInWithIdToken({
-        provider: 'apple',
-        token: credential.identityToken,
-      });
-      if (error) throw new Error(error.message || 'Apple sign in failed');
-      await fetchUser();
     } else {
       // Web / Android — use OAuth redirect
       if (Platform.OS === 'web') {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'apple',
-          options: { redirectTo: `${window.location.origin}/auth-callback` },
-        });
-        if (error) throw new Error(error.message || 'Apple sign in failed');
+        try {
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'apple',
+            options: { redirectTo: `${window.location.origin}/auth-callback` },
+          });
+          if (error) throw new Error(error.message || 'Apple sign in failed');
+        } catch (e: any) {
+          console.error('[AuthContext] signInWithApple web error:', e);
+          throw e;
+        }
         return;
       }
 
-      const redirectUrl = makeRedirectUri({ scheme: 'vantageairecruitment', path: 'auth-callback' });
+      const redirectUrl = makeRedirectUri({ scheme: 'vantage-ai-recruitment', path: 'auth-callback' });
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
@@ -208,8 +262,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const hashParams = new URLSearchParams(url.hash.substring(1));
           const accessToken = url.searchParams.get('access_token') || hashParams.get('access_token');
           const refreshToken = url.searchParams.get('refresh_token') || hashParams.get('refresh_token');
+          const code = url.searchParams.get('code');
           if (accessToken && refreshToken) {
             await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          } else if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
           }
         } else if (result.type === 'cancel' || result.type === 'dismiss') {
           throw new Error('Authentication cancelled');

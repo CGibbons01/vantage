@@ -7,14 +7,12 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Mail, Copy, CheckCircle, Download, ChevronDown, ChevronUp, Lightbulb, RotateCcw } from 'lucide-react-native';
+import { Mail, Copy, CheckCircle, ChevronDown, ChevronUp, Lightbulb, RotateCcw } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { authenticatedPost, getBearerToken, BACKEND_URL } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
@@ -74,6 +72,53 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
   );
 }
 
+// Local cover letter template generation — no backend needed
+function generateCoverLetterLocally(params: {
+  applicantName: string;
+  jobTitle: string;
+  companyName: string;
+  jobDescription: string;
+  cvSummary: string;
+  tone: Tone;
+}): CoverLetterResult {
+  const { applicantName, jobTitle, companyName, cvSummary, tone } = params;
+
+  const openingMap: Record<Tone, string> = {
+    professional: `I am writing to express my strong interest in the ${jobTitle} position at ${companyName}.`,
+    enthusiastic: `I am thrilled to apply for the ${jobTitle} role at ${companyName} — a company whose work I have long admired.`,
+    concise: `Please consider my application for the ${jobTitle} position at ${companyName}.`,
+  };
+
+  const closingMap: Record<Tone, string> = {
+    professional: `I am confident that my background makes me an excellent candidate for this role. I would welcome the opportunity to discuss how my experience aligns with your needs.`,
+    enthusiastic: `I am genuinely excited about the opportunity to bring my skills and passion to ${companyName}. I would love to discuss how I can contribute to your team.`,
+    concise: `I believe my skills are a strong match for this role and would welcome a conversation at your convenience.`,
+  };
+
+  const summaryParagraph = cvSummary.trim()
+    ? cvSummary.trim()
+    : `With a strong background relevant to the ${jobTitle} role, I bring a combination of technical expertise and a proven track record of delivering results.`;
+
+  const coverLetter = [
+    'Dear Hiring Manager,',
+    '',
+    openingMap[tone],
+    '',
+    summaryParagraph,
+    '',
+    `Having reviewed the requirements for this position, I am confident that my experience and skills align well with what ${companyName} is looking for. I am particularly drawn to the opportunity to contribute to your team and help drive meaningful outcomes.`,
+    '',
+    closingMap[tone],
+    '',
+    'Yours sincerely,',
+    applicantName,
+  ].join('\n');
+
+  const wordCount = coverLetter.split(/\s+/).filter(Boolean).length;
+
+  return { cover_letter: coverLetter, word_count: wordCount };
+}
+
 export default function CoverLetterScreen() {
   const insets = useSafeAreaInsets();
   const { isSubscribed } = useSubscription();
@@ -87,7 +132,6 @@ export default function CoverLetterScreen() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CoverLetterResult | null>(null);
   const [copied, setCopied] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   const [tipsExpanded, setTipsExpanded] = useState(false);
 
   if (!isSubscribed) {
@@ -114,15 +158,16 @@ export default function CoverLetterScreen() {
     setLoading(true);
     setResult(null);
     try {
-      const data = await authenticatedPost<CoverLetterResult>('/api/cover-letter/generate', {
-        applicant_name: applicantName.trim(),
-        job_title: jobTitle.trim(),
-        company_name: companyName.trim(),
-        job_description: jobDescription.trim(),
-        cv_summary: cvSummary.trim(),
+      // Local template generation — no backend needed
+      const data = generateCoverLetterLocally({
+        applicantName: applicantName.trim(),
+        jobTitle: jobTitle.trim(),
+        companyName: companyName.trim(),
+        jobDescription: jobDescription.trim(),
+        cvSummary: cvSummary.trim(),
         tone,
       });
-      console.log('[CoverLetter] Generated successfully, word count:', data.word_count);
+      console.log('[CoverLetter] Generated locally, word count:', data.word_count);
       setResult(data);
     } catch (e: any) {
       console.error('[CoverLetter] Generate error:', e);
@@ -144,79 +189,13 @@ export default function CoverLetterScreen() {
     setCopied(false);
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!result) return;
     console.log('[CoverLetter] Copy to clipboard pressed');
-    Clipboard.setStringAsync(result.cover_letter);
+    await Clipboard.setStringAsync(result.cover_letter);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleDownloadPdf = async () => {
-    if (!result?.cover_letter) return;
-    console.log('[CoverLetter] Download PDF pressed');
-    setDownloading(true);
-    try {
-      const token = await getBearerToken();
-      if (!token) throw new Error('Not signed in');
-
-      const url = `${BACKEND_URL}/api/cover-letter/export-pdf`;
-      console.log('[CoverLetter] POST', url);
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ content: result.cover_letter, title: 'Cover Letter' }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.error('[CoverLetter] PDF export error:', response.status, text.slice(0, 200));
-        throw new Error(`Server error ${response.status}`);
-      }
-
-      console.log('[CoverLetter] PDF response received, processing...');
-
-      if (Platform.OS === 'web') {
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = 'cover-letter.pdf';
-        a.click();
-        URL.revokeObjectURL(blobUrl);
-        console.log('[CoverLetter] PDF download triggered on web');
-      } else {
-        const { default: FS, EncodingType } = await import('expo-file-system');
-        const Sharing = await import('expo-sharing');
-        const arrayBuffer = await response.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-        const fileUri = FS.documentDirectory + 'cover-letter.pdf';
-        await FS.writeAsStringAsync(fileUri, base64, {
-          encoding: EncodingType.Base64,
-        });
-        console.log('[CoverLetter] PDF written to:', fileUri);
-        const canShare = await Sharing.default.isAvailableAsync();
-        if (canShare) {
-          await Sharing.default.shareAsync(fileUri, { mimeType: 'application/pdf' });
-          console.log('[CoverLetter] Share sheet opened');
-        } else {
-          Alert.alert('Saved', `PDF saved to: ${fileUri}`);
-        }
-      }
-    } catch (e: any) {
-      console.error('[CoverLetter] PDF download error:', e);
-      Alert.alert('Download Failed', e?.message || 'Could not generate PDF.');
-    } finally {
-      setDownloading(false);
-    }
+    Alert.alert('Copied!', 'Copied to clipboard. You can paste this into a Word document or Google Docs.');
   };
 
   const wordCount = result ? Number(result.word_count) : 0;
@@ -405,17 +384,6 @@ export default function CoverLetterScreen() {
 
             <View style={styles.resultActions}>
               <AnimatedPressable
-                style={[styles.actionBtn, downloading && styles.actionBtnDisabled]}
-                onPress={handleDownloadPdf}
-                disabled={downloading}
-              >
-                {downloading
-                  ? <ActivityIndicator size="small" color={COLORS.primaryLight} style={{ width: 14, height: 14 }} />
-                  : <Download size={14} color={COLORS.primaryLight} />
-                }
-                <Text style={styles.actionBtnText}>PDF</Text>
-              </AnimatedPressable>
-              <AnimatedPressable
                 style={[styles.actionBtn, copied && styles.actionBtnSuccess]}
                 onPress={handleCopy}
               >
@@ -424,7 +392,7 @@ export default function CoverLetterScreen() {
                   : <Copy size={14} color={COLORS.primaryLight} />
                 }
                 <Text style={[styles.actionBtnText, copied && { color: COLORS.success }]}>
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied ? 'Copied!' : 'Copy to Clipboard'}
                 </Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.startOverBtn} onPress={handleStartOver}>
@@ -672,7 +640,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  actionBtnDisabled: { opacity: 0.5 },
   actionBtnSuccess: { backgroundColor: COLORS.successMuted, borderColor: 'rgba(34,197,94,0.3)' },
   actionBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.primaryLight },
   startOverBtn: {
