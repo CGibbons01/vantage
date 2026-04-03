@@ -6,13 +6,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const NAVY = '#0F2B5B';
-const CARD = '#1A3A6B';
-const AMBER = '#F59E0B';
-const WHITE = '#FFFFFF';
-const SLATE = '#94A3B8';
-const BORDER = 'rgba(255,255,255,0.08)';
+import { COLORS } from '@/constants/theme';
 
 interface SectionProps {
   title: string;
@@ -119,7 +113,7 @@ export default function PrivacyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: NAVY,
+    backgroundColor: COLORS.background,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -127,7 +121,7 @@ const styles = StyleSheet.create({
   },
   lastUpdated: {
     fontSize: 12,
-    color: SLATE,
+    color: COLORS.textMuted,
     marginBottom: 24,
     fontStyle: 'italic',
   },
@@ -137,7 +131,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 17,
     fontWeight: '700',
-    color: WHITE,
+    color: COLORS.text,
     marginBottom: 10,
     letterSpacing: -0.2,
   },
@@ -145,15 +139,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionDivider: {
-    height: 2,
-    backgroundColor: AMBER,
-    opacity: 0.25,
-    borderRadius: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
     marginBottom: 20,
   },
   bodyText: {
     fontSize: 14,
-    color: SLATE,
+    color: COLORS.textSecondary,
     lineHeight: 22,
   },
   bulletList: {
@@ -169,29 +161,29 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: AMBER,
+    backgroundColor: COLORS.primaryLight,
     marginTop: 7,
     flexShrink: 0,
   },
   bulletText: {
     flex: 1,
     fontSize: 14,
-    color: SLATE,
+    color: COLORS.textSecondary,
     lineHeight: 22,
   },
   contactCard: {
     marginTop: 12,
-    backgroundColor: CARD,
+    backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
     alignItems: 'center',
   },
   contactEmail: {
     fontSize: 15,
     fontWeight: '600',
-    color: AMBER,
+    color: COLORS.primaryLight,
   },
 });

@@ -13,7 +13,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MapPin, DollarSign, Tag, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { authenticatedGet, authenticatedPost } from '@/utils/api';
+import { authenticatedGet, authenticatedPost, authenticatedPut } from '@/utils/api';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 
@@ -106,7 +106,8 @@ export default function JobDetailScreen() {
         await Linking.openURL(job.redirect_url);
         if (savedApplication) {
           try {
-            await authenticatedPost(`/api/applications/${savedApplication.id}/status`, { status: 'applied' });
+            await authenticatedPut(`/api/applications/${savedApplication.id}`, { status: 'applied' });
+
           } catch (_) {}
         }
       } else {

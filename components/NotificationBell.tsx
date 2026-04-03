@@ -24,6 +24,7 @@ import {
   Platform,
   Linking,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useNotifications } from "@/contexts/NotificationContext";
 
 interface NotificationBellProps {
@@ -37,6 +38,7 @@ export function NotificationBell({
   variant = "default",
   size = 24,
 }: NotificationBellProps) {
+  const router = useRouter();
   const { hasPermission, permissionDenied, loading, isWeb, requestPermission } =
     useNotifications();
 
@@ -44,7 +46,8 @@ export function NotificationBell({
 
   const handlePress = async () => {
     if (hasPermission) {
-      // Already has permission - could navigate to notification center
+      console.log('[NotificationBell] Bell pressed — navigating to notification preferences');
+      router.push('/(tabs)/notifications');
       return;
     }
 

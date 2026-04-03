@@ -22,7 +22,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useAuth } from "@/contexts/AuthContext";
 import { COLORS, getScoreColor } from "@/constants/theme";
-import { apiGet, getBearerToken, BACKEND_URL } from "@/utils/api";
+import { apiGet, authenticatedPost } from "@/utils/api";
 
 interface SectionScore {
   name: string;
@@ -175,24 +175,12 @@ export default function HomeScreen() {
       }
       console.log('[Dashboard] File read as base64, length:', base64.length);
 
-      const token = await getBearerToken();
-      console.log('[Dashboard] POST cv-score — sending base64 JSON to Supabase edge function');
-      const response = await fetch(`https://dokdulxrrpumtinlbyiv.supabase.co/functions/v1/cv-score`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ file_base64: base64, file_name: fileName, mime_type: mimeType }),
+      console.log('[Dashboard] POST /api/cv/score — sending base64 JSON to backend');
+      const data = await authenticatedPost('/api/cv/score', {
+        file_base64: base64,
+        file_name: fileName,
+        mime_type: mimeType,
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        console.log('[Dashboard] CV upload failed:', response.status, text);
-        throw new Error(`Upload failed (${response.status}): ${text.slice(0, 120)}`);
-      }
-
-      const data = await response.json();
       console.log('[Dashboard] CV score result:', data);
 
       setCvScore(data.overall_score ?? data.score ?? null);

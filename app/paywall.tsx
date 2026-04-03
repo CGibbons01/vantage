@@ -137,7 +137,7 @@ export default function PaywallScreen() {
 
   const handleDownloadApp = () => {
     const iosUrl = "https://apps.apple.com/app/vantage-ai-recruitment";
-    const androidUrl = "https://play.google.com/store/apps/details?id=com.vantage.airecruitment";
+    const androidUrl = "https://play.google.com/store/apps/details?id=com.gibbonsrecruitment.VantageAI";
     Alert.alert(
       "Download the App",
       "To subscribe, please download our app from your device's app store.",

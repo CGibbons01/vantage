@@ -3,6 +3,7 @@ import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/auth';
+import { COLORS } from '@/constants/theme';
 
 // Dismiss the in-app browser on native after OAuth redirect
 WebBrowser.maybeCompleteAuthSession();
@@ -69,7 +70,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      {status === 'processing' && <ActivityIndicator size="large" color="#7C3AED" />}
+      {status === 'processing' && <ActivityIndicator size="large" color={COLORS.primaryLight} />}
       {status === 'success' && <Text style={styles.successIcon}>✓</Text>}
       {status === 'error' && <Text style={styles.errorIcon}>✗</Text>}
       <Text style={styles.message}>{message}</Text>
@@ -83,20 +84,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.background,
   },
   successIcon: {
     fontSize: 48,
-    color: '#34C759',
+    color: COLORS.success,
   },
   errorIcon: {
     fontSize: 48,
-    color: '#FF3B30',
+    color: COLORS.error,
   },
   message: {
     fontSize: 18,
     marginTop: 20,
     textAlign: 'center',
-    color: '#333',
+    color: COLORS.text,
   },
 });

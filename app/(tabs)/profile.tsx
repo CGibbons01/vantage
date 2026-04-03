@@ -101,8 +101,12 @@ export default function ProfileScreen() {
     console.log('[Profile] Sign out confirmed');
     setShowSignOutModal(false);
     try {
-      await resetOnboarding();
       await signOut();
+      try {
+        await resetOnboarding();
+      } catch (resetErr) {
+        console.warn('[Profile] resetOnboarding failed (non-fatal):', resetErr);
+      }
       router.replace('/welcome');
     } catch (e: any) {
       console.error('[Profile] Sign out error:', e);
