@@ -185,6 +185,16 @@ export default function RootLayout() {
                           headerTintColor: '#F0EEFF',
                         }}
                       />
+                      <Stack.Screen
+                        name="notification-preferences"
+                        options={{
+                          headerShown: true,
+                          headerTitle: "Notification Preferences",
+                          headerBackButtonDisplayMode: "minimal",
+                          headerStyle: { backgroundColor: '#0D0B1E' },
+                          headerTintColor: '#F0EEFF',
+                        }}
+                      />
                     </Stack>
                   </AuthGuard>
                   <SystemBars style="light" />

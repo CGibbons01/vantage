@@ -151,7 +151,7 @@ export default function NotificationsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => { console.log('[Notifications] Back button pressed'); router.back(); }}
+          onPress={() => { console.log('[Notifications] Back button pressed'); router.replace('/(tabs)/(home)'); }}
           style={styles.backBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >

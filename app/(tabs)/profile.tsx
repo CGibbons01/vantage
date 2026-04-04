@@ -147,7 +147,7 @@ export default function ProfileScreen() {
         <View style={styles.headerRow}>
           <View style={styles.headerLeft}>
             <Pressable
-              onPress={() => { console.log('[Profile] Back button pressed'); router.back(); }}
+              onPress={() => { console.log('[Profile] Back button pressed'); router.replace('/(tabs)/(home)'); }}
               style={styles.backBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
