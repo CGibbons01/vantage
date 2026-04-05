@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Animated,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +35,147 @@ interface Job {
   contract_type?: string;
   job_type?: string;
 }
+
+// ─── Source badge detection ───────────────────────────────────────────────────
+
+interface SourceInfo {
+  label: string;
+  bg: string;
+  color: string;
+}
+
+function detectSource(redirectUrl: string): SourceInfo | null {
+  if (!redirectUrl) return null;
+  const url = redirectUrl.toLowerCase();
+  if (url.includes('indeed.com')) return { label: 'Indeed', bg: '#E8F0FE', color: '#1A56DB' };
+  if (url.includes('linkedin.com')) return { label: 'LinkedIn', bg: '#E0EAF5', color: '#0A66C2' };
+  if (url.includes('glassdoor.com')) return { label: 'Glassdoor', bg: '#E6F4EA', color: '#1E8E3E' };
+  if (url.includes('hays.')) return { label: 'Hays', bg: '#FCE8E6', color: '#C5221F' };
+  if (url.includes('roberthalf.')) return { label: 'Robert Half', bg: '#FEF3E2', color: '#E37400' };
+  if (url.includes('reed.co.uk') || url.includes('reed.com')) return { label: 'Reed', bg: '#FCE8E6', color: '#B31412' };
+  if (url.includes('totaljobs.com')) return { label: 'Total Jobs', bg: '#EDE7F6', color: '#6200EA' };
+  if (url.includes('cv-library.co.uk')) return { label: 'CV-Library', bg: '#E8F5E9', color: '#2E7D32' };
+  if (url.includes('monster.com')) return { label: 'Monster', bg: '#F3E5F5', color: '#7B1FA2' };
+  return null;
+}
+
+// ─── Platform deep-link shortcuts ────────────────────────────────────────────
+
+interface Platform {
+  key: string;
+  label: string;
+  bg: string;
+  color: string;
+  buildUrl: (query: string, location: string) => string;
+}
+
+const PLATFORMS: Platform[] = [
+  {
+    key: 'indeed',
+    label: 'Indeed',
+    bg: '#E8F0FE',
+    color: '#1A56DB',
+    buildUrl: (q, l) =>
+      `https://www.indeed.com/jobs?q=${encodeURIComponent(q)}&l=${encodeURIComponent(l)}`,
+  },
+  {
+    key: 'linkedin',
+    label: 'LinkedIn',
+    bg: '#E0EAF5',
+    color: '#0A66C2',
+    buildUrl: (q, l) =>
+      `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=${encodeURIComponent(l)}`,
+  },
+  {
+    key: 'glassdoor',
+    label: 'Glassdoor',
+    bg: '#E6F4EA',
+    color: '#1E8E3E',
+    buildUrl: (q) =>
+      `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(q)}&locT=C&locId=1`,
+  },
+  {
+    key: 'hays',
+    label: 'Hays',
+    bg: '#FCE8E6',
+    color: '#C5221F',
+    buildUrl: (q) =>
+      `https://www.hays.com/job-search/jobs?q=${encodeURIComponent(q)}`,
+  },
+  {
+    key: 'roberthalf',
+    label: 'Robert Half',
+    bg: '#FEF3E2',
+    color: '#E37400',
+    buildUrl: (q) =>
+      `https://www.roberthalf.com/us/en/jobs?keywords=${encodeURIComponent(q)}`,
+  },
+  {
+    key: 'reed',
+    label: 'Reed',
+    bg: '#FCE8E6',
+    color: '#B31412',
+    buildUrl: (q, l) =>
+      `https://www.reed.co.uk/jobs/${encodeURIComponent(q)}-jobs-in-${encodeURIComponent(l || 'uk')}`,
+  },
+  {
+    key: 'totaljobs',
+    label: 'Total Jobs',
+    bg: '#EDE7F6',
+    color: '#6200EA',
+    buildUrl: (q, l) =>
+      `https://www.totaljobs.com/jobs/${encodeURIComponent(q)}/in-${encodeURIComponent(l || 'uk')}`,
+  },
+  {
+    key: 'cvlibrary',
+    label: 'CV-Library',
+    bg: '#E8F5E9',
+    color: '#2E7D32',
+    buildUrl: (q) =>
+      `https://www.cv-library.co.uk/search-jobs?q=${encodeURIComponent(q)}`,
+  },
+  {
+    key: 'monster',
+    label: 'Monster',
+    bg: '#F3E5F5',
+    color: '#7B1FA2',
+    buildUrl: (q) =>
+      `https://www.monster.com/jobs/search?q=${encodeURIComponent(q)}`,
+  },
+];
+
+function PlatformShortcuts({ query, location }: { query: string; location: string }) {
+  const handlePlatformPress = async (platform: Platform) => {
+    const url = platform.buildUrl(query, location);
+    console.log('[Jobs] Platform shortcut pressed:', platform.label, '→', url);
+    try {
+      await Linking.openURL(url);
+    } catch (e) {
+      console.error('[Jobs] Failed to open URL:', url, e);
+    }
+  };
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.platformScroll}
+      contentContainerStyle={styles.platformContent}
+    >
+      {PLATFORMS.map((platform) => (
+        <AnimatedPressable
+          key={platform.key}
+          style={[styles.platformBtn, { backgroundColor: platform.bg, borderColor: platform.color + '40' }]}
+          onPress={() => handlePlatformPress(platform)}
+        >
+          <Text style={[styles.platformBtnText, { color: platform.color }]}>{platform.label}</Text>
+        </AnimatedPressable>
+      ))}
+    </ScrollView>
+  );
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function formatPostedDate(dateStr: string): string {
   if (!dateStr) return '';
@@ -125,6 +267,7 @@ function JobCard({
   const postedDate = formatPostedDate(job.created);
   const jobType = job.contract_type || job.job_type || null;
   const companyInitial = (job.company?.[0] || 'J').toUpperCase();
+  const source = detectSource(job.redirect_url);
 
   return (
     <Animated.View style={{ opacity, transform: [{ translateY }] }}>
@@ -138,9 +281,15 @@ function JobCard({
             <Text style={styles.jobCompany} numberOfLines={1}>{job.company}</Text>
           </View>
           <View style={styles.badgeCol}>
-            <View style={styles.recommendedBadge}>
-              <Text style={styles.recommendedText}>New</Text>
-            </View>
+            {source ? (
+              <View style={[styles.sourceBadge, { backgroundColor: source.bg, borderColor: source.color + '40' }]}>
+                <Text style={[styles.sourceBadgeText, { color: source.color }]}>{source.label}</Text>
+              </View>
+            ) : (
+              <View style={styles.recommendedBadge}>
+                <Text style={styles.recommendedText}>New</Text>
+              </View>
+            )}
             <ChevronRight size={16} color={COLORS.textMuted} />
           </View>
         </View>
@@ -359,6 +508,9 @@ export default function JobsScreen() {
         </View>
       </View>
 
+      {/* Platform shortcuts */}
+      <PlatformShortcuts query={keywords} location={location} />
+
       {/* Category chips */}
       <ScrollView
         horizontal
@@ -465,6 +617,17 @@ const styles = StyleSheet.create({
   headerCount: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
   searchSection: { paddingHorizontal: 20, gap: 8, marginBottom: 8 },
   searchRow: { flexDirection: 'row', gap: 8 },
+  // Platform shortcuts
+  platformScroll: { marginBottom: 6 },
+  platformContent: { paddingHorizontal: 20, gap: 8, paddingVertical: 4 },
+  platformBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  platformBtnText: { fontSize: 12, fontWeight: '700' },
+  // Category chips
   chipsScroll: { marginBottom: 8 },
   chipsContent: { paddingHorizontal: 20, gap: 8, paddingVertical: 4 },
   categoryChip: {
@@ -534,6 +697,13 @@ const styles = StyleSheet.create({
   },
   jobIconInitial: { fontSize: 16, fontWeight: '800', color: COLORS.primaryLight },
   badgeCol: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sourceBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  sourceBadgeText: { fontSize: 11, fontWeight: '700' },
   recommendedBadge: {
     backgroundColor: COLORS.infoMuted,
     borderRadius: 8,
