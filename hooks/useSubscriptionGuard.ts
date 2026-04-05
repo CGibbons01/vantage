@@ -29,7 +29,7 @@ export function useSubscriptionGuard() {
     if (onboardingDone.current === null || !onboardingDone.current) return;
     if (!user) return;
     if (!isSubscribed) {
-      console.log("[SubscriptionGuard] User not subscribed — redirecting to paywall");
+      if (__DEV__) console.log("[SubscriptionGuard] User not subscribed — redirecting to paywall");
       router.replace("/paywall");
     }
   }, [isSubscribed, loading, user, router]);

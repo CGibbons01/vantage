@@ -19,6 +19,7 @@ import { WidgetProvider } from "@/contexts/WidgetContext";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -47,7 +48,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && user) {
       isOnboardingComplete().then((done) => {
-        console.log("[AuthGuard] onboarding complete:", done);
+        if (__DEV__) console.log("[AuthGuard] onboarding complete:", done);
         setOnboardingDone(done);
       });
     } else if (!loading && !user) {
@@ -56,7 +57,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [loading, user]);
 
   if (loading) {
-    console.log("[AuthGuard] Auth loading — showing spinner");
+    if (__DEV__) console.log("[AuthGuard] Auth loading — showing spinner");
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0D0B1E" }}>
         <ActivityIndicator size="large" color="#7C3AED" />
@@ -72,12 +73,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (isUnauthOnly || isPublic) {
       return <>{children}</>;
     }
-    console.log("[AuthGuard] No user on protected route, redirecting to /welcome");
+    if (__DEV__) console.log("[AuthGuard] No user on protected route, redirecting to /welcome");
     return <Redirect href="/welcome" />;
   }
 
   if (isUnauthOnly) {
-    console.log("[AuthGuard] Authenticated user on unauth route, redirecting to /(tabs)");
+    if (__DEV__) console.log("[AuthGuard] Authenticated user on unauth route, redirecting to /(tabs)");
     return <Redirect href="/(tabs)" />;
   }
 
@@ -94,12 +95,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!onboardingDone && !isOnboarding) {
-    console.log("[AuthGuard] Onboarding not complete, redirecting to /onboarding");
+    if (__DEV__) console.log("[AuthGuard] Onboarding not complete, redirecting to /onboarding");
     return <Redirect href="/onboarding" />;
   }
 
   if (onboardingDone && isOnboarding) {
-    console.log("[AuthGuard] Onboarding already done, redirecting to /(tabs)");
+    if (__DEV__) console.log("[AuthGuard] Onboarding already done, redirecting to /(tabs)");
     return <Redirect href="/(tabs)" />;
   }
 
@@ -136,66 +137,68 @@ export default function RootLayout() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <StatusBar style="light" animated />
                   <AuthGuard>
-                    <Stack
-                      screenOptions={{
-                        headerShown: false,
-                        animation: 'slide_from_right',
-                        animationDuration: 300,
-                        contentStyle: { backgroundColor: '#0D0B1E' },
-                        headerStyle: { backgroundColor: '#0D0B1E' },
-                        headerTintColor: '#F0EEFF',
-                        headerTitleStyle: { color: '#F0EEFF', fontWeight: '600' },
-                        headerShadowVisible: false,
-                      }}
-                    >
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                      <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
-                      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-                      <Stack.Screen name="welcome" options={{ headerShown: false }} />
-                      <Stack.Screen
-                        name="privacy"
-                        options={{
-                          headerShown: true,
-                          headerTitle: "Privacy Policy",
-                          headerBackButtonDisplayMode: "minimal",
+                    <ErrorBoundary>
+                      <Stack
+                        screenOptions={{
+                          headerShown: false,
+                          animation: 'slide_from_right',
+                          animationDuration: 300,
+                          contentStyle: { backgroundColor: '#0D0B1E' },
                           headerStyle: { backgroundColor: '#0D0B1E' },
                           headerTintColor: '#F0EEFF',
+                          headerTitleStyle: { color: '#F0EEFF', fontWeight: '600' },
+                          headerShadowVisible: false,
                         }}
-                      />
-                      <Stack.Screen
-                        name="job/[id]"
-                        options={{
-                          headerShown: true,
-                          headerTitle: "Job Details",
-                          headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: '#0D0B1E' },
-                          headerTintColor: '#F0EEFF',
-                        }}
-                      />
-                      <Stack.Screen
-                        name="profile/edit"
-                        options={{
-                          headerShown: true,
-                          headerTitle: "Edit Profile",
-                          headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: '#0D0B1E' },
-                          headerTintColor: '#F0EEFF',
-                        }}
-                      />
-                      <Stack.Screen
-                        name="notification-preferences"
-                        options={{
-                          headerShown: true,
-                          headerTitle: "Notification Preferences",
-                          headerBackButtonDisplayMode: "minimal",
-                          headerStyle: { backgroundColor: '#0D0B1E' },
-                          headerTintColor: '#F0EEFF',
-                        }}
-                      />
-                    </Stack>
+                      >
+                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                        <Stack.Screen name="auth-screen" options={{ headerShown: false }} />
+                        <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                        <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                        <Stack.Screen name="paywall" options={{ headerShown: false, presentation: "modal" }} />
+                        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                        <Stack.Screen name="welcome" options={{ headerShown: false }} />
+                        <Stack.Screen
+                          name="privacy"
+                          options={{
+                            headerShown: true,
+                            headerTitle: "Privacy Policy",
+                            headerBackButtonDisplayMode: "minimal",
+                            headerStyle: { backgroundColor: '#0D0B1E' },
+                            headerTintColor: '#F0EEFF',
+                          }}
+                        />
+                        <Stack.Screen
+                          name="job/[id]"
+                          options={{
+                            headerShown: true,
+                            headerTitle: "Job Details",
+                            headerBackButtonDisplayMode: "minimal",
+                            headerStyle: { backgroundColor: '#0D0B1E' },
+                            headerTintColor: '#F0EEFF',
+                          }}
+                        />
+                        <Stack.Screen
+                          name="profile/edit"
+                          options={{
+                            headerShown: true,
+                            headerTitle: "Edit Profile",
+                            headerBackButtonDisplayMode: "minimal",
+                            headerStyle: { backgroundColor: '#0D0B1E' },
+                            headerTintColor: '#F0EEFF',
+                          }}
+                        />
+                        <Stack.Screen
+                          name="notification-preferences"
+                          options={{
+                            headerShown: true,
+                            headerTitle: "Notification Preferences",
+                            headerBackButtonDisplayMode: "minimal",
+                            headerStyle: { backgroundColor: '#0D0B1E' },
+                            headerTintColor: '#F0EEFF',
+                          }}
+                        />
+                      </Stack>
+                    </ErrorBoundary>
                   </AuthGuard>
                   <SystemBars style="light" />
                 </GestureHandlerRootView>

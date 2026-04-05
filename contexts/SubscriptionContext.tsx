@@ -51,7 +51,7 @@ const IOS_API_KEY = extra.revenueCatApiKeyIos || "";
 const ANDROID_API_KEY = extra.revenueCatApiKeyAndroid || "";
 const TEST_IOS_API_KEY = extra.revenueCatTestApiKeyIos || "";
 const TEST_ANDROID_API_KEY = extra.revenueCatTestApiKeyAndroid || "";
-const ENTITLEMENT_ID = extra.revenueCatEntitlementId || "premium";
+const ENTITLEMENT_ID = extra.revenueCatEntitlementId || "pro";
 
 // Check if running on web
 const isWeb = Platform.OS === "web";
@@ -150,7 +150,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
     };
 
     setPackages([mockPackage] as PurchasesPackage[]);
-    console.log("[RevenueCat] Web preview: showing real prices from dashboard");
+    if (__DEV__) console.log("[RevenueCat] Web preview: showing real prices from dashboard");
   };
 
   /**
@@ -168,7 +168,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       // ── Cache gate ──────────────────────────────────────────────────────────
       const now = Date.now();
       if (!force && now - lastFetchedAt.current < CACHE_TTL_MS) {
-        console.log(
+        if (__DEV__) console.log(
           "[RevenueCat] checkSubscription: cache hit — skipping API call " +
             `(${Math.round((CACHE_TTL_MS - (now - lastFetchedAt.current)) / 1000)}s remaining)`
         );
@@ -177,7 +177,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
 
       // ── In-flight deduplication ─────────────────────────────────────────────
       if (inflightCheck.current) {
-        console.log(
+        if (__DEV__) console.log(
           "[RevenueCat] checkSubscription: request already in-flight — reusing promise"
         );
         return inflightCheck.current;
@@ -185,7 +185,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
 
       const doFetch = async (): Promise<void> => {
         try {
-          console.log(
+          if (__DEV__) console.log(
             "[RevenueCat] checkSubscription: calling getCustomerInfo()"
           );
           const customerInfo = await Purchases.getCustomerInfo();
@@ -231,7 +231,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
               BACKOFF_DELAYS_MS[Math.min(attempt, BACKOFF_DELAYS_MS.length - 1)];
             retryCount.current = attempt + 1;
 
-            console.warn(
+            if (__DEV__) console.warn(
               `[RevenueCat] Rate limited (429 / error 7638) — ` +
                 `retry #${attempt + 1} in ${delay / 1000}s (keeping last known state)`
             );
@@ -246,7 +246,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
           } else {
             // Non-rate-limit error — reset backoff, log, keep last known state
             retryCount.current = 0;
-            console.error("[RevenueCat] Failed to check subscription:", error);
+            if (__DEV__) console.error("[RevenueCat] Failed to check subscription:", error);
           }
           // Never reset isSubscribed on error — avoids incorrectly showing paywall
         } finally {
@@ -269,7 +269,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
    * Exposed in context as the "manual refresh" method (always force=true).
    */
   const checkSubscription = useCallback((): Promise<void> => {
-    console.log("[RevenueCat] checkSubscription: requested (debouncing)");
+    if (__DEV__) console.log("[RevenueCat] checkSubscription: requested (debouncing)");
     return new Promise((resolve) => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(async () => {
@@ -305,7 +305,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         // It is NOT available in standard Expo Go — only in custom dev builds and production builds.
         // DO NOT change this check or replace with AsyncStorage-based workarounds.
         if (typeof Purchases?.configure !== "function") {
-          console.warn(
+          if (__DEV__) console.warn(
             "[RevenueCat] react-native-purchases native module not available. " +
               "Purchases require a custom dev build or production build, not standard Expo Go."
           );
@@ -335,7 +335,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         const apiKey = __DEV__ && testKey ? testKey : productionKey;
 
         if (!apiKey) {
-          console.warn(
+          if (__DEV__) console.warn(
             "[RevenueCat] API key not provided for this platform. " +
               "Please add revenueCatApiKeyIos/revenueCatApiKeyAndroid to app.json extra."
           );
@@ -368,7 +368,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         // prevent a redundant getCustomerInfo() call right after.
         customerInfoListener = Purchases.addCustomerInfoUpdateListener(
           (customerInfo) => {
-            console.log(
+            if (__DEV__) console.log(
               "[RevenueCat] customerInfoUpdateListener fired — updating state from listener"
             );
             // Update cache timestamp so the subsequent checkSubscription() call is skipped
@@ -390,7 +390,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         // Initial subscription check — cache-gated so the listener above can short-circuit it
         await _doCheckSubscription(false);
       } catch (error) {
-        console.error("[RevenueCat] Failed to initialize:", error);
+        if (__DEV__) console.error("[RevenueCat] Failed to initialize:", error);
       } finally {
         setLoading(false);
       }
@@ -421,13 +421,13 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       userSyncTimer.current = null;
       try {
         if (user?.id) {
-          console.log(
+          if (__DEV__) console.log(
             "[RevenueCat] Syncing user ID:",
             user.id.substring(0, 8) + "..."
           );
           await Purchases.logIn(user.id);
         } else {
-          console.log("[RevenueCat] No user — logging out to anonymous");
+          if (__DEV__) console.log("[RevenueCat] No user — logging out to anonymous");
           await Purchases.logOut();
         }
         // After identity change, invalidate cache and do a fresh check
@@ -435,7 +435,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         lastFetchedAt.current = 0;
         await _doCheckSubscription(true);
       } catch (error) {
-        console.error("[RevenueCat] Failed to update user:", error);
+        if (__DEV__) console.error("[RevenueCat] Failed to update user:", error);
       }
     }, 2000);
   }, [user?.id, isConfigured, authLoading, _doCheckSubscription]);
@@ -448,7 +448,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
 
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active") {
-        console.log(
+        if (__DEV__) console.log(
           "[RevenueCat] App foregrounded — checking subscription (cache-gated)"
         );
         // Use _doCheckSubscription directly (not the debounced public one) so
@@ -478,16 +478,16 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         setPackages(fetchedOfferings.current.availablePackages);
       }
     } catch (error) {
-      console.error("[RevenueCat] Failed to fetch offerings:", error);
+      if (__DEV__) console.error("[RevenueCat] Failed to fetch offerings:", error);
     }
   };
 
   const purchasePackage = async (pkg: PurchasesPackage): Promise<boolean> => {
     if (isWeb) {
-      console.warn("[RevenueCat] Purchases not available on web");
+      if (__DEV__) console.warn("[RevenueCat] Purchases not available on web");
       return false;
     }
-    console.log(
+    if (__DEV__) console.log(
       "[RevenueCat] purchasePackage: initiating purchase for",
       pkg.identifier
     );
@@ -503,7 +503,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
           () => {}
         );
       }
-      console.log(
+      if (__DEV__) console.log(
         "[RevenueCat] purchasePackage: result — hasEntitlement:",
         hasEntitlement
       );
@@ -511,20 +511,20 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
     } catch (error: any) {
       // Don't treat user cancellation as an error
       if (!error.userCancelled) {
-        console.error("[RevenueCat] Purchase failed:", error);
+        if (__DEV__) console.error("[RevenueCat] Purchase failed:", error);
         throw error;
       }
-      console.log("[RevenueCat] purchasePackage: user cancelled");
+      if (__DEV__) console.log("[RevenueCat] purchasePackage: user cancelled");
       return false;
     }
   };
 
   const restorePurchases = async (): Promise<boolean> => {
     if (isWeb) {
-      console.warn("[RevenueCat] Restore not available on web");
+      if (__DEV__) console.warn("[RevenueCat] Restore not available on web");
       return false;
     }
-    console.log("[RevenueCat] restorePurchases: initiating restore");
+    if (__DEV__) console.log("[RevenueCat] restorePurchases: initiating restore");
     try {
       const customerInfo = await Purchases.restorePurchases();
       // Invalidate cache after restore
@@ -539,13 +539,13 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
           hasEntitlement ? "true" : "false"
         ).catch(() => {});
       }
-      console.log(
+      if (__DEV__) console.log(
         "[RevenueCat] restorePurchases: result — hasEntitlement:",
         hasEntitlement
       );
       return hasEntitlement;
     } catch (error) {
-      console.error("[RevenueCat] Restore failed:", error);
+      if (__DEV__) console.error("[RevenueCat] Restore failed:", error);
       throw error;
     }
   };

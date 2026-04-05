@@ -81,7 +81,7 @@ export default function PaywallScreen() {
   // isSubscribed updates and redirects the user back to the paywall.
   useEffect(() => {
     if (isSubscribed && !loading) {
-      console.log('[Paywall] isSubscribed confirmed — navigating to home');
+      if (__DEV__) console.log('[Paywall] isSubscribed confirmed — navigating to home');
       router.replace("/(tabs)/(home)");
     }
   }, [isSubscribed, loading, router]);
@@ -93,7 +93,7 @@ export default function PaywallScreen() {
       setPurchasing(true);
       const success = await purchasePackage(selectedPackage);
       if (success) {
-        console.log('[Paywall] Purchase succeeded — refreshing subscription state');
+        if (__DEV__) console.log('[Paywall] Purchase succeeded — refreshing subscription state');
         await checkSubscription();
       }
     } catch (error: any) {
@@ -109,7 +109,7 @@ export default function PaywallScreen() {
       setRestoring(true);
       const restored = await restorePurchases();
       if (restored) {
-        console.log('[Paywall] Restore succeeded — refreshing subscription state');
+        if (__DEV__) console.log('[Paywall] Restore succeeded — refreshing subscription state');
         await checkSubscription();
       } else {
         Alert.alert("No Purchases Found", "We couldn't find any previous purchases.");
@@ -128,7 +128,7 @@ export default function PaywallScreen() {
 
   const handleWebMockPurchase = async () => {
     if (!selectedPackage) return;
-    console.log('[Paywall] Web mock purchase initiated');
+    if (__DEV__) console.log('[Paywall] Web mock purchase initiated');
     setWebMockState("processing");
     await new Promise((resolve) => setTimeout(resolve, 400));
     setWebMockState("idle");
@@ -136,14 +136,33 @@ export default function PaywallScreen() {
   };
 
   const handleDownloadApp = () => {
-    const iosUrl = "https://apps.apple.com/app/vantage-ai-recruitment";
+    // TODO: Replace with actual App Store ID after submission
+    const iosUrl = "https://apps.apple.com/app/id6746788698";
     const androidUrl = "https://play.google.com/store/apps/details?id=com.gibbonsrecruitment.VantageAI";
     Alert.alert(
       "Download the App",
       "To subscribe, please download our app from your device's app store.",
       [
-        { text: "App Store (iOS)", onPress: () => Linking.openURL(iosUrl) },
-        { text: "Google Play", onPress: () => Linking.openURL(androidUrl) },
+        {
+          text: "App Store (iOS)",
+          onPress: async () => {
+            try {
+              await Linking.openURL(iosUrl);
+            } catch (e) {
+              if (__DEV__) console.error('[Paywall] Failed to open App Store URL:', e);
+            }
+          },
+        },
+        {
+          text: "Google Play",
+          onPress: async () => {
+            try {
+              await Linking.openURL(androidUrl);
+            } catch (e) {
+              if (__DEV__) console.error('[Paywall] Failed to open Google Play URL:', e);
+            }
+          },
+        },
         { text: "Cancel", style: "cancel" },
       ]
     );

@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Listen to Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('[AuthContext] onAuthStateChange — event:', _event, 'user:', session?.user?.email ?? null);
+      if (__DEV__) console.log('[AuthContext] onAuthStateChange — event:', _event, 'user:', session?.user?.email ?? null);
       if (session?.user) {
         setUser(supabaseUserToUser(session.user));
       } else {
@@ -64,20 +64,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchingRef.current = true;
     setLoading(true);
     try {
-      console.log('[AuthContext] fetchUser — calling getSession');
+      if (__DEV__) console.log('[AuthContext] fetchUser — calling getSession');
       const { data, error } = await supabase.auth.getSession();
       if (error) {
-        console.warn('[AuthContext] fetchUser — getSession error:', error.message);
+        if (__DEV__) console.warn('[AuthContext] fetchUser — getSession error:', error.message);
         setUser(null);
       } else if (data.session?.user) {
-        console.log('[AuthContext] fetchUser — session found, user:', data.session.user.email);
+        if (__DEV__) console.log('[AuthContext] fetchUser — session found, user:', data.session.user.email);
         setUser(supabaseUserToUser(data.session.user));
       } else {
-        console.log('[AuthContext] fetchUser — no session, user is null');
+        if (__DEV__) console.log('[AuthContext] fetchUser — no session, user is null');
         setUser(null);
       }
     } catch (error) {
-      console.error('[AuthContext] fetchUser error:', error);
+      if (__DEV__) console.error('[AuthContext] fetchUser error:', error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -86,29 +86,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    console.log('[AuthContext] signInWithEmail called for:', email);
+    if (__DEV__) console.log('[AuthContext] signInWithEmail called for:', email);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    console.log('[AuthContext] signInWithPassword response — user:', data?.user?.email ?? null, 'error:', error?.message ?? null);
+    if (__DEV__) console.log('[AuthContext] signInWithPassword response — user:', data?.user?.email ?? null, 'error:', error?.message ?? null);
     if (error) {
       throw new Error(error.message || 'Sign in failed. Please check your credentials.');
     }
   };
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
-    console.log('[AuthContext] signUpWithEmail called for:', email);
+    if (__DEV__) console.log('[AuthContext] signUpWithEmail called for:', email);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { name } },
     });
-    console.log('[AuthContext] signUp response — user:', data?.user?.email ?? null, 'error:', error?.message ?? null);
+    if (__DEV__) console.log('[AuthContext] signUp response — user:', data?.user?.email ?? null, 'error:', error?.message ?? null);
     if (error) {
       throw new Error(error.message || 'Sign up failed. Please try again.');
     }
     // If email confirmation is disabled, the user is signed in immediately.
     // If confirmation is required, data.session will be null — inform the user.
     if (!data.session) {
-      console.log('[AuthContext] signUpWithEmail — email confirmation required, auto signing in');
+      if (__DEV__) console.log('[AuthContext] signUpWithEmail — email confirmation required, auto signing in');
       // Attempt immediate sign-in in case confirmation is not required
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) {
@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithGoogle = async () => {
-    console.log('[AuthContext] signInWithGoogle called');
+    if (__DEV__) console.log('[AuthContext] signInWithGoogle called');
 
     if (Platform.OS === 'web') {
       try {
@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (error) throw new Error(error.message || 'Google sign in failed');
       } catch (e: any) {
-        console.error('[AuthContext] signInWithGoogle web error:', e);
+        if (__DEV__) console.error('[AuthContext] signInWithGoogle web error:', e);
         throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
       }
       return;
@@ -137,10 +137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Native: use deep link scheme
     const redirectUrl = makeRedirectUri({
-      scheme: 'vantage-ai-recruitment',
+      scheme: 'vantageairecruitment',
       path: 'auth-callback',
     });
-    console.log('[AuthContext] signInWithGoogle — redirectUrl:', redirectUrl);
+    if (__DEV__) console.log('[AuthContext] signInWithGoogle — redirectUrl:', redirectUrl);
 
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -152,14 +152,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error('[AuthContext] signInWithGoogle OAuth error:', error.message);
+        if (__DEV__) console.error('[AuthContext] signInWithGoogle OAuth error:', error.message);
         throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
       }
 
       if (data?.url) {
-        console.log('[AuthContext] signInWithGoogle — opening browser session');
+        if (__DEV__) console.log('[AuthContext] signInWithGoogle — opening browser session');
         const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-        console.log('[AuthContext] signInWithGoogle — browser result type:', result.type);
+        if (__DEV__) console.log('[AuthContext] signInWithGoogle — browser result type:', result.type);
 
         if (result.type === 'success') {
           const url = new URL(result.url);
@@ -171,24 +171,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const code = url.searchParams.get('code');
 
           if (accessToken && refreshToken) {
-            console.log('[AuthContext] signInWithGoogle — setting session from tokens');
+            if (__DEV__) console.log('[AuthContext] signInWithGoogle — setting session from tokens');
             const { error: sessionError } = await supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
             });
             if (sessionError) {
-              console.error('[AuthContext] signInWithGoogle setSession error:', sessionError.message);
+              if (__DEV__) console.error('[AuthContext] signInWithGoogle setSession error:', sessionError.message);
               throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
             }
           } else if (code) {
-            console.log('[AuthContext] signInWithGoogle — exchanging code for session');
+            if (__DEV__) console.log('[AuthContext] signInWithGoogle — exchanging code for session');
             const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
             if (exchangeError) {
-              console.error('[AuthContext] signInWithGoogle exchangeCode error:', exchangeError.message);
+              if (__DEV__) console.error('[AuthContext] signInWithGoogle exchangeCode error:', exchangeError.message);
               throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
             }
           } else {
-            console.warn('[AuthContext] signInWithGoogle — no tokens or code found in callback URL');
+            if (__DEV__) console.warn('[AuthContext] signInWithGoogle — no tokens or code found in callback URL');
             throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
           }
         } else if (result.type === 'cancel' || result.type === 'dismiss') {
@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (e: any) {
       if (e.message === 'Authentication cancelled') throw e;
-      console.error('[AuthContext] signInWithGoogle error:', e.message);
+      if (__DEV__) console.error('[AuthContext] signInWithGoogle error:', e.message);
       throw new Error('Sign in with Google is currently unavailable. Please use email and password.');
     }
 
@@ -205,7 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithApple = async () => {
-    console.log('[AuthContext] signInWithApple called');
+    if (__DEV__) console.log('[AuthContext] signInWithApple called');
     if (Platform.OS === 'ios') {
       try {
         const credential = await AppleAuthentication.signInAsync({
@@ -217,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!credential.identityToken) {
           throw new Error('No identity token received from Apple');
         }
-        console.log('[AuthContext] signInWithApple — got identity token, calling signInWithIdToken');
+        if (__DEV__) console.log('[AuthContext] signInWithApple — got identity token, calling signInWithIdToken');
         const { error } = await supabase.auth.signInWithIdToken({
           provider: 'apple',
           token: credential.identityToken,
@@ -229,7 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (e.code === 'ERR_CANCELED' || e.message === 'Authentication cancelled') {
           throw new Error('Authentication cancelled');
         }
-        console.error('[AuthContext] signInWithApple error:', e.message);
+        if (__DEV__) console.error('[AuthContext] signInWithApple error:', e.message);
         throw e;
       }
     } else {
@@ -242,13 +242,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
           if (error) throw new Error(error.message || 'Apple sign in failed');
         } catch (e: any) {
-          console.error('[AuthContext] signInWithApple web error:', e);
+          if (__DEV__) console.error('[AuthContext] signInWithApple web error:', e);
           throw e;
         }
         return;
       }
 
-      const redirectUrl = makeRedirectUri({ scheme: 'vantage-ai-recruitment', path: 'auth-callback' });
+      const redirectUrl = makeRedirectUri({ scheme: 'vantageairecruitment', path: 'auth-callback' });
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
@@ -277,15 +277,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    console.log('[AuthContext] signOut called');
+    if (__DEV__) console.log('[AuthContext] signOut called');
     try {
       const { error } = await supabase.auth.signOut();
-      if (error) console.error('[AuthContext] signOut error:', error.message);
+      if (error && __DEV__) console.error('[AuthContext] signOut error:', error.message);
     } catch (error) {
-      console.error('[AuthContext] signOut exception:', error);
+      if (__DEV__) console.error('[AuthContext] signOut exception:', error);
     } finally {
       setUser(null);
-      console.log('[AuthContext] signOut complete — user cleared');
+      if (__DEV__) console.log('[AuthContext] signOut complete — user cleared');
     }
   };
 
