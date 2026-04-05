@@ -51,7 +51,7 @@ const IOS_API_KEY = extra.revenueCatApiKeyIos || "";
 const ANDROID_API_KEY = extra.revenueCatApiKeyAndroid || "";
 const TEST_IOS_API_KEY = extra.revenueCatTestApiKeyIos || "";
 const TEST_ANDROID_API_KEY = extra.revenueCatTestApiKeyAndroid || "";
-const ENTITLEMENT_ID = extra.revenueCatEntitlementId || "pro";
+const ENTITLEMENT_ID = extra.revenueCatEntitlementId || "premium";
 
 // Check if running on web
 const isWeb = Platform.OS === "web";
