@@ -227,21 +227,22 @@ export default function JobsScreen() {
         app_id: ADZUNA_APP_ID,
         app_key: ADZUNA_APP_KEY,
         results_per_page: '10',
-        page: String(pageNum),
-        content_type: 'application/json',
       });
       if (kw.trim()) params.set('what', kw.trim());
       if (location.trim()) params.set('where', location.trim());
 
       const url = `https://api.adzuna.com/v1/api/jobs/${ADZUNA_COUNTRY}/search/${pageNum}?${params.toString()}`;
       console.log('[Jobs] Fetching from Adzuna:', url);
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+      });
       if (!response.ok) {
         const text = await response.text();
-        console.error('[Jobs] Adzuna error response:', response.status, text.slice(0, 200));
-        throw new Error(`Adzuna error: ${response.status}`);
+        console.error('[Jobs] Adzuna error response:', response.status, text.slice(0, 500));
+        throw new Error(`Adzuna API error ${response.status}: ${text.slice(0, 120)}`);
       }
       const data = await response.json();
+      console.log('[Jobs] Adzuna raw response keys:', Object.keys(data));
 
       const newJobs: Job[] = (data.results ?? []).map((r: any) => ({
         id: r.id,
