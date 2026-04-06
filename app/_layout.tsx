@@ -21,7 +21,11 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
-SplashScreen.preventAutoHideAsync();
+try {
+  SplashScreen.preventAutoHideAsync();
+} catch (e) {
+  // ignore
+}
 
 const UNAUTH_ONLY_ROUTES = ["/auth-screen", "/auth-popup", "/auth-callback", "/welcome"];
 const PUBLIC_ROUTES = ["/privacy", "/paywall"];
@@ -109,21 +113,22 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const networkState = useNetworkState();
-  const [loaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
+  const loaded = fontsLoaded || !!fontError;
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [loaded]);
 
   useEffect(() => {
-    if (!networkState.isConnected && networkState.isInternetReachable === false) {
+    if (!networkState?.isConnected && networkState?.isInternetReachable === false) {
       Alert.alert("You are offline", "Check your connection and try again.");
     }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
+  }, [networkState?.isConnected, networkState?.isInternetReachable]);
 
   if (!loaded) return null;
 
@@ -136,8 +141,8 @@ export default function RootLayout() {
               <WidgetProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <StatusBar style="light" animated />
-                  <AuthGuard>
-                    <ErrorBoundary>
+                  <ErrorBoundary>
+                    <AuthGuard>
                       <Stack
                         screenOptions={{
                           headerShown: false,
@@ -198,8 +203,8 @@ export default function RootLayout() {
                           }}
                         />
                       </Stack>
-                    </ErrorBoundary>
-                  </AuthGuard>
+                    </AuthGuard>
+                  </ErrorBoundary>
                   <SystemBars style="light" />
                 </GestureHandlerRootView>
               </WidgetProvider>
