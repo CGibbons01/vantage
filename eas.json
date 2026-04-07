@@ -7,10 +7,12 @@
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "expo prebuild --clean"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "prebuildCommand": "expo prebuild --clean"
     }
   }
 }
