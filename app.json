@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vantage ai recruitment",
     "slug": "vantage-ai-recruitment",
-    "version": "1.0.25",
+    "version": "1.0.26",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon-lca.png",
     "userInterfaceStyle": "automatic",
@@ -34,7 +34,7 @@
       },
       "package": "com.gibbonsrecruitment.VantageAI",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 26,
+      "versionCode": 27,
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.RECEIVE_BOOT_COMPLETED",
