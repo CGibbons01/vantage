@@ -34,7 +34,14 @@
       },
       "package": "com.gibbonsrecruitment.VantageAI",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 26
+      "versionCode": 26,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
     },
     "web": {
       "favicon": "./assets/images/app-icon-lca.png",
