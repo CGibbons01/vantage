@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "987226523482",
+    "project_id": "vantage-47372",
+    "storage_bucket": "vantage-47372.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:987226523482:android:2d7c32dc89460ce7419563",
+        "android_client_info": {
+          "package_name": "com.gibbonsrecruitment.VantageAI"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "987226523482-i6g56r420tu4qtllgkanvu2bvj1k7je8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTHDF2ssHpbJe2hLoRpPlutqhfeUsjlak"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "987226523482-i6g56r420tu4qtllgkanvu2bvj1k7je8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
