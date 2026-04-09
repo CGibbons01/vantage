@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { supabase } from '@/lib/auth';
 
 export const BACKEND_URL =
-  Constants.expoConfig?.extra?.backendUrl || 'https://dokdulxrrpumtinlbyiv.supabase.co';
+  Constants.expoConfig?.extra?.backendUrl || 'https://93xu69nwqqwz659axrd8dvwjn3dqgwta.app.specular.dev';
 
 export const isBackendConfigured = (): boolean => {
   return !!BACKEND_URL && BACKEND_URL.length > 0;

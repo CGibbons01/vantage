@@ -5,7 +5,7 @@ import { ExtensionStorage } from "@bacons/apple-targets";
 
 // Initialize storage with your group ID
 const storage = new ExtensionStorage(
-  "group.com.vantage.airecruitment"
+  "group.com.gibbonsrecruitment.VantageAI.onesignal"
 );
 
 type WidgetContextType = {

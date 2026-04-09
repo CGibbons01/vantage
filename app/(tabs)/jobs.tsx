@@ -14,12 +14,14 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, MapPin, Briefcase, ChevronRight, Clock } from 'lucide-react-native';
+import Constants from 'expo-constants';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 
-const ADZUNA_APP_ID = '791f9b4e';
-const ADZUNA_APP_KEY = '9db825d4c62b56666cfad5050cdf4cb2';
-const ADZUNA_COUNTRY = 'gb';
+const _extra = Constants.expoConfig?.extra || {};
+const ADZUNA_APP_ID: string = _extra.adzunaAppId || '';
+const ADZUNA_APP_KEY: string = _extra.adzunaAppKey || '';
+const ADZUNA_COUNTRY: string = _extra.adzunaCountry || 'gb';
 
 interface Job {
   id: string;

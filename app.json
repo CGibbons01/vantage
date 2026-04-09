@@ -65,7 +65,10 @@
       "nativelyProjectId": "24750422-3c7f-41af-8b70-5237cf4860c6",
       "revenueCatTestApiKeyIos": "test_XxUpjSNYbrnurJJWiJtSvRVyBKc",
       "revenueCatTestApiKeyAndroid": "test_XxUpjSNYbrnurJJWiJtSvRVyBKc",
-      "oneSignalAppId": "ceea2f35-aec0-492a-90ae-a9999a5be14b"
+      "oneSignalAppId": "ceea2f35-aec0-492a-90ae-a9999a5be14b",
+      "adzunaAppId": "791f9b4e",
+      "adzunaAppKey": "9db825d4c62b56666cfad5050cdf4cb2",
+      "adzunaCountry": "gb"
     }
   }
 }
