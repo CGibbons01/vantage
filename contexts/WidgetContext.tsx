@@ -1,12 +1,6 @@
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
 import { Platform } from "react-native";
-import { ExtensionStorage } from "@bacons/apple-targets";
-
-// Initialize storage with your group ID
-const storage = new ExtensionStorage(
-  "group.com.gibbonsrecruitment.VantageAI.onesignal"
-);
 
 type WidgetContextType = {
   refreshWidget: () => void;
@@ -15,20 +9,25 @@ type WidgetContextType = {
 const WidgetContext = createContext<WidgetContextType | null>(null);
 
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
-  // Update widget state whenever what we want to show changes
   React.useEffect(() => {
-    // set widget_state to null if we want to reset the widget
-    // storage.set("widget_state", null);
-
-    // Refresh widget (iOS only)
     if (Platform.OS === "ios") {
-      ExtensionStorage.reloadWidget();
+      try {
+        const { ExtensionStorage } = require("@bacons/apple-targets");
+        ExtensionStorage.reloadWidget();
+      } catch (e) {
+        // ignore — widget not available
+      }
     }
   }, []);
 
   const refreshWidget = useCallback(() => {
     if (Platform.OS === "ios") {
-      ExtensionStorage.reloadWidget();
+      try {
+        const { ExtensionStorage } = require("@bacons/apple-targets");
+        ExtensionStorage.reloadWidget();
+      } catch (e) {
+        // ignore
+      }
     }
   }, []);
 
