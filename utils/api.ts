@@ -1,12 +1,23 @@
-import Constants from 'expo-constants';
 import { supabase } from '@/lib/auth';
 
-export const BACKEND_URL =
-  Constants.expoConfig?.extra?.backendUrl || 'https://93xu69nwqqwz659axrd8dvwjn3dqgwta.app.specular.dev';
+// Supabase edge functions base URL
+const SUPABASE_FUNCTIONS_URL = 'https://dokdulxrrpumtinlbyiv.supabase.co/functions/v1';
 
-export const isBackendConfigured = (): boolean => {
-  return !!BACKEND_URL && BACKEND_URL.length > 0;
-};
+// Map /api/* logical paths to Supabase edge function URLs
+function resolveUrl(endpoint: string): string {
+  if (endpoint === '/api/profile' || endpoint === '/api/profile/') {
+    return `${SUPABASE_FUNCTIONS_URL}/api-profile`;
+  }
+  if (endpoint.startsWith('/api/applications')) {
+    const suffix = endpoint.slice('/api/applications'.length);
+    return `${SUPABASE_FUNCTIONS_URL}/api-applications${suffix}`;
+  }
+  if (endpoint.startsWith('/api/cv')) {
+    const suffix = endpoint.slice('/api/cv'.length);
+    return `${SUPABASE_FUNCTIONS_URL}/api-cv${suffix}`;
+  }
+  return `${SUPABASE_FUNCTIONS_URL}${endpoint}`;
+}
 
 export const getBearerToken = async (): Promise<string | null> => {
   try {
@@ -22,29 +33,20 @@ export const apiCall = async <T = any>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> => {
-  if (!isBackendConfigured()) {
-    throw new Error('Backend URL not configured. Please rebuild the app.');
-  }
-
-  const url = `${BACKEND_URL}${endpoint}`;
+  const url = resolveUrl(endpoint);
   const method = options?.method || 'GET';
   console.log(`[API] ${method} ${url}`);
+
+  const token = await getBearerToken();
 
   const fetchOptions: RequestInit = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   };
-
-  const token = await getBearerToken();
-  if (token) {
-    fetchOptions.headers = {
-      ...fetchOptions.headers,
-      Authorization: `Bearer ${token}`,
-    };
-  }
 
   let response: Response;
   try {
@@ -69,86 +71,29 @@ export const apiCall = async <T = any>(
   return response.json();
 };
 
-export const apiGet = async <T = any>(endpoint: string): Promise<T> => {
-  return apiCall<T>(endpoint, { method: 'GET' });
-};
+export const apiGet = async <T = any>(endpoint: string): Promise<T> =>
+  apiCall<T>(endpoint, { method: 'GET' });
 
-export const apiPost = async <T = any>(endpoint: string, data: any): Promise<T> => {
-  return apiCall<T>(endpoint, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-};
+export const apiPost = async <T = any>(endpoint: string, data: any): Promise<T> =>
+  apiCall<T>(endpoint, { method: 'POST', body: JSON.stringify(data) });
 
-export const apiPut = async <T = any>(endpoint: string, data: any): Promise<T> => {
-  return apiCall<T>(endpoint, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-};
+export const apiPut = async <T = any>(endpoint: string, data: any): Promise<T> =>
+  apiCall<T>(endpoint, { method: 'PUT', body: JSON.stringify(data) });
 
-export const apiPatch = async <T = any>(endpoint: string, data: any): Promise<T> => {
-  return apiCall<T>(endpoint, {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
-};
+export const apiPatch = async <T = any>(endpoint: string, data: any): Promise<T> =>
+  apiCall<T>(endpoint, { method: 'PATCH', body: JSON.stringify(data) });
 
-export const apiDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
-  return apiCall<T>(endpoint, {
-    method: 'DELETE',
-    body: JSON.stringify(data),
-  });
-};
+export const apiDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> =>
+  apiCall<T>(endpoint, { method: 'DELETE', body: JSON.stringify(data) });
 
-export const authenticatedApiCall = async <T = any>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> => {
-  const token = await getBearerToken();
+// Authenticated variants — token is always injected by apiCall, these are aliases
+export const authenticatedApiCall = apiCall;
+export const authenticatedGet = apiGet;
+export const authenticatedPost = apiPost;
+export const authenticatedPut = apiPut;
+export const authenticatedPatch = apiPatch;
+export const authenticatedDelete = apiDelete;
 
-  if (!token) {
-    console.warn('[API] No auth token found — making unauthenticated request to', endpoint);
-    return apiCall<T>(endpoint, options);
-  }
-
-  return apiCall<T>(endpoint, {
-    ...options,
-    headers: {
-      ...options?.headers,
-      Authorization: `Bearer ${token}`,
-    },
-  });
-};
-
-export const authenticatedGet = async <T = any>(endpoint: string): Promise<T> => {
-  return authenticatedApiCall<T>(endpoint, { method: 'GET' });
-};
-
-export const authenticatedPost = async <T = any>(endpoint: string, data: any): Promise<T> => {
-  return authenticatedApiCall<T>(endpoint, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-};
-
-export const authenticatedPut = async <T = any>(endpoint: string, data: any): Promise<T> => {
-  return authenticatedApiCall<T>(endpoint, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-};
-
-export const authenticatedPatch = async <T = any>(endpoint: string, data: any): Promise<T> => {
-  return authenticatedApiCall<T>(endpoint, {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  });
-};
-
-export const authenticatedDelete = async <T = any>(endpoint: string, data: any = {}): Promise<T> => {
-  return authenticatedApiCall<T>(endpoint, {
-    method: 'DELETE',
-    body: JSON.stringify(data),
-  });
-};
+// Legacy compat exports
+export const BACKEND_URL = SUPABASE_FUNCTIONS_URL;
+export const isBackendConfigured = () => true;

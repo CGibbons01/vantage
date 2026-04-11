@@ -18,6 +18,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
+import { authenticatedPost } from '@/utils/api';
 
 const USER_CV_KEY = 'user_cv_text';
 
@@ -289,13 +290,21 @@ export default function CVWriterScreen() {
     setImpLoading(true);
     setImpSaved(false);
     try {
-      // Save CV to AsyncStorage — AI improvement requires a backend
-      await AsyncStorage.setItem(USER_CV_KEY, impCV.trim());
-      console.log('[CVWriter] CV saved to AsyncStorage key:', USER_CV_KEY);
+      console.log('[CVWriter] POST /api/cv/improve — cv_text length:', impCV.trim().length, 'target_role:', impRole, 'focus_areas:', focusAreas);
+      const response = await authenticatedPost<{ improved_cv: string }>('/api/cv/improve', {
+        cv_text: impCV.trim(),
+        target_role: impRole.trim(),
+        focus_areas: focusAreas.length > 0 ? focusAreas : undefined,
+      });
+      console.log('[CVWriter] CV improve response received, improved_cv length:', response?.improved_cv?.length);
+      const improvedText = response?.improved_cv ?? '';
+      setImpCV(improvedText);
+      await AsyncStorage.setItem(USER_CV_KEY, improvedText);
+      console.log('[CVWriter] Improved CV saved to AsyncStorage');
       setImpSaved(true);
     } catch (e: any) {
-      console.error('[CVWriter] Improve/save error:', e);
-      Alert.alert('Error', 'Could not save your CV. Please try again.');
+      console.error('[CVWriter] Improve error:', e);
+      Alert.alert('Failed to improve CV', e?.message || 'Please try again.');
     } finally {
       setImpLoading(false);
     }
@@ -420,10 +429,10 @@ export default function CVWriterScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.modeBtnGradient}
             >
-              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Save My CV</Text>
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>AI Improve</Text>
             </LinearGradient>
           ) : (
-            <Text style={styles.modeBtnText}>Save My CV</Text>
+            <Text style={styles.modeBtnText}>AI Improve</Text>
           )}
         </AnimatedPressable>
       </View>
@@ -733,7 +742,7 @@ export default function CVWriterScreen() {
               >
                 {impLoading
                   ? <ActivityIndicator color="#FFFFFF" size="small" />
-                  : <Text style={styles.primaryBtnText}>Save My CV</Text>
+                  : <Text style={styles.primaryBtnText}>Improve with AI</Text>
                 }
               </LinearGradient>
             </AnimatedPressable>
@@ -741,7 +750,7 @@ export default function CVWriterScreen() {
             {impSaved && (
               <View style={styles.successBanner}>
                 <Text style={styles.successBannerText}>
-                  {'✓ Your CV has been saved. AI improvement requires a backend connection — your CV text is stored and ready to use across the app.'}
+                  {'✓ Your CV has been improved by AI and saved. Review the updated text above.'}
                 </Text>
               </View>
             )}
