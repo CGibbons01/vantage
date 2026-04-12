@@ -18,20 +18,59 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
-import { authenticatedPost } from '@/utils/api';
+import { authenticatedPut } from '@/utils/api';
 
 const USER_CV_KEY = 'user_cv_text';
 
-type Mode = 'generate' | 'improve';
+type Mode = 'generate' | 'upload';
 type CVSection = 'summary' | 'experience' | 'skills' | 'achievements';
 
-const FOCUS_AREAS = [
-  { label: 'Impact Statements', value: 'impact_statements' },
-  { label: 'Keywords', value: 'keywords' },
-  { label: 'Formatting', value: 'formatting' },
-  { label: 'Achievements', value: 'achievements' },
-  { label: 'Summary', value: 'summary' },
-];
+function parseCVText(text: string): {
+  summary: string;
+  skills: string[];
+  headline: string;
+} {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let summary = '';
+  const summaryHeadingIdx = lines.findIndex(l =>
+    /^(professional\s+)?summary|profile|about\s*me?$/i.test(l)
+  );
+  if (summaryHeadingIdx !== -1) {
+    const summaryLines: string[] = [];
+    for (let i = summaryHeadingIdx + 1; i < lines.length && i < summaryHeadingIdx + 6; i++) {
+      if (/^(experience|education|skills|achievements|employment|work)/i.test(lines[i])) break;
+      summaryLines.push(lines[i]);
+    }
+    summary = summaryLines.join(' ').trim();
+  }
+
+  let skills: string[] = [];
+  const skillsHeadingIdx = lines.findIndex(l => /^(key\s+)?skills(\s+&\s+\w+)?$/i.test(l));
+  if (skillsHeadingIdx !== -1) {
+    const skillLines: string[] = [];
+    for (let i = skillsHeadingIdx + 1; i < lines.length && i < skillsHeadingIdx + 8; i++) {
+      if (/^(experience|education|summary|achievements|employment|work)/i.test(lines[i])) break;
+      skillLines.push(lines[i]);
+    }
+    const raw = skillLines.join(', ');
+    skills = raw
+      .split(/[,•|·\n]/)
+      .map(s => s.replace(/^[-–—*]\s*/, '').trim())
+      .filter(s => s.length > 1 && s.length < 50);
+  }
+
+  let headline = '';
+  const titlePatterns = /\b(engineer|developer|manager|analyst|designer|consultant|director|lead|architect|specialist|coordinator|executive|officer)\b/i;
+  for (let i = 0; i < Math.min(lines.length, 8); i++) {
+    if (titlePatterns.test(lines[i]) && lines[i].length < 80) {
+      headline = lines[i];
+      break;
+    }
+  }
+
+  return { summary, skills, headline };
+}
 
 interface GenerateResult {
   cv_text: string;
@@ -55,16 +94,6 @@ function SkillChip({ label, onRemove }: { label: string; onRemove: () => void })
   );
 }
 
-function FocusChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <AnimatedPressable
-      style={[styles.focusChip, selected && styles.focusChipSelected]}
-      onPress={onPress}
-    >
-      <Text style={[styles.focusChipText, selected && styles.focusChipTextSelected]}>{label}</Text>
-    </AnimatedPressable>
-  );
-}
 
 function SectionTab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
@@ -184,12 +213,9 @@ export default function CVWriterScreen() {
   const [activeSection, setActiveSection] = useState<CVSection>('summary');
   const [genCopied, setGenCopied] = useState(false);
 
-  // Improve mode state
+  // Upload mode state
   const [impCV, setImpCV] = useState('');
-  const [impRole, setImpRole] = useState('');
-  const [focusAreas, setFocusAreas] = useState<string[]>([]);
-  const [impLoading, setImpLoading] = useState(false);
-  const [impSaved, setImpSaved] = useState(false);
+  const [savingCV, setSavingCV] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
 
   if (!isSubscribed) {
@@ -243,13 +269,6 @@ export default function CVWriterScreen() {
     setSkills(prev => prev.filter(s => s !== skill));
   };
 
-  const toggleFocusArea = (value: string) => {
-    console.log('[CVWriter] Toggle focus area:', value);
-    setFocusAreas(prev =>
-      prev.includes(value) ? prev.filter(f => f !== value) : [...prev, value]
-    );
-  };
-
   const handleGenerate = async () => {
     if (!genName.trim() || !genEmail.trim() || !genRole.trim()) {
       Alert.alert('Missing fields', 'Please fill in your name, email, and target role.');
@@ -281,32 +300,43 @@ export default function CVWriterScreen() {
     }
   };
 
-  const handleImprove = async () => {
-    if (!impCV.trim() || !impRole.trim()) {
-      Alert.alert('Missing fields', 'Please paste your CV and enter a target role.');
+  const handleSaveCV = async () => {
+    if (!impCV.trim()) {
+      Alert.alert('No CV text', 'Please paste your CV text or upload a .txt file first.');
       return;
     }
-    console.log('[CVWriter] Improve CV pressed - role:', impRole, 'focus areas:', focusAreas);
-    setImpLoading(true);
-    setImpSaved(false);
+    console.log('[CVWriter] Save CV pressed, text length:', impCV.trim().length);
+    setSavingCV(true);
     try {
-      console.log('[CVWriter] POST /api/cv/improve — cv_text length:', impCV.trim().length, 'target_role:', impRole, 'focus_areas:', focusAreas);
-      const response = await authenticatedPost<{ improved_cv: string }>('/api/cv/improve', {
-        cv_text: impCV.trim(),
-        target_role: impRole.trim(),
-        focus_areas: focusAreas.length > 0 ? focusAreas : undefined,
-      });
-      console.log('[CVWriter] CV improve response received, improved_cv length:', response?.improved_cv?.length);
-      const improvedText = response?.improved_cv ?? '';
-      setImpCV(improvedText);
-      await AsyncStorage.setItem(USER_CV_KEY, improvedText);
-      console.log('[CVWriter] Improved CV saved to AsyncStorage');
-      setImpSaved(true);
+      const parsed = parseCVText(impCV.trim());
+      console.log('[CVWriter] Parsed CV — headline:', parsed.headline, 'skills:', parsed.skills.length, 'summary length:', parsed.summary.length);
+
+      await AsyncStorage.setItem(USER_CV_KEY, impCV.trim());
+      console.log('[CVWriter] Raw CV saved to AsyncStorage');
+
+      const profilePayload: Record<string, any> = {};
+      if (parsed.summary) profilePayload.summary = parsed.summary;
+      if (parsed.skills.length > 0) profilePayload.skills = parsed.skills;
+      if (parsed.headline) profilePayload.headline = parsed.headline;
+
+      if (Object.keys(profilePayload).length > 0) {
+        await authenticatedPut('/api/profile', profilePayload);
+        console.log('[CVWriter] Profile updated with parsed CV data');
+      }
+
+      const skillCount = parsed.skills.length;
+      const hasSummary = !!parsed.summary;
+      const skillWord = skillCount !== 1 ? 'skills' : 'skill';
+      const detailMsg = skillCount > 0 || hasSummary
+        ? `Your CV has been saved and your profile has been updated with ${skillCount} ${skillWord}${hasSummary ? ' and a summary' : ''}.`
+        : 'Your CV has been saved. You can edit your profile to add more details.';
+
+      Alert.alert('CV Saved', detailMsg, [{ text: 'Done' }]);
     } catch (e: any) {
-      console.error('[CVWriter] Improve error:', e);
-      Alert.alert('Failed to improve CV', e?.message || 'Please try again.');
+      console.error('[CVWriter] Save CV error:', e);
+      Alert.alert('Save Failed', e?.message || 'Could not save your CV. Please try again.');
     } finally {
-      setImpLoading(false);
+      setSavingCV(false);
     }
   };
 
@@ -419,20 +449,20 @@ export default function CVWriterScreen() {
           )}
         </AnimatedPressable>
         <AnimatedPressable
-          style={[styles.modeBtn, mode === 'improve' && styles.modeBtnActive]}
-          onPress={() => { console.log('[CVWriter] Switch to Improve mode'); setMode('improve'); }}
+          style={[styles.modeBtn, mode === 'upload' && styles.modeBtnActive]}
+          onPress={() => { console.log('[CVWriter] Switch to Upload CV mode'); setMode('upload'); }}
         >
-          {mode === 'improve' ? (
+          {mode === 'upload' ? (
             <LinearGradient
               colors={['#7C3AED', '#4F46E5']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.modeBtnGradient}
             >
-              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>AI Improve</Text>
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Upload CV</Text>
             </LinearGradient>
           ) : (
-            <Text style={styles.modeBtnText}>AI Improve</Text>
+            <Text style={styles.modeBtnText}>Upload CV</Text>
           )}
         </AnimatedPressable>
       </View>
@@ -673,7 +703,7 @@ export default function CVWriterScreen() {
           <>
             <View style={styles.infoBox}>
               <Text style={styles.infoBoxText}>
-                Paste or upload your CV below to save it to your profile. It will be used across the app for job matching and cover letter generation.
+                {"Paste or upload your CV below. We'll extract your skills, summary, and headline to pre-fill your profile and the CV Writer."}
               </Text>
             </View>
 
@@ -708,31 +738,10 @@ export default function CVWriterScreen() {
               textAlignVertical="top"
             />
 
-            <Text style={styles.fieldLabel}>Target Role</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Product Manager"
-              placeholderTextColor={COLORS.textMuted}
-              value={impRole}
-              onChangeText={setImpRole}
-            />
-
-            <Text style={styles.fieldLabel}>Focus Areas</Text>
-            <View style={styles.chipsRow}>
-              {FOCUS_AREAS.map(fa => (
-                <FocusChip
-                  key={fa.value}
-                  label={fa.label}
-                  selected={focusAreas.includes(fa.value)}
-                  onPress={() => toggleFocusArea(fa.value)}
-                />
-              ))}
-            </View>
-
             <AnimatedPressable
-              style={[styles.primaryBtn, impLoading && styles.primaryBtnDisabled]}
-              onPress={handleImprove}
-              disabled={impLoading}
+              style={[styles.primaryBtn, savingCV && styles.primaryBtnDisabled]}
+              onPress={handleSaveCV}
+              disabled={savingCV}
             >
               <LinearGradient
                 colors={['#7C3AED', '#4F46E5']}
@@ -740,20 +749,12 @@ export default function CVWriterScreen() {
                 end={{ x: 1, y: 0 }}
                 style={styles.primaryBtnGradient}
               >
-                {impLoading
+                {savingCV
                   ? <ActivityIndicator color="#FFFFFF" size="small" />
-                  : <Text style={styles.primaryBtnText}>Improve with AI</Text>
+                  : <Text style={styles.primaryBtnText}>Save to Profile</Text>
                 }
               </LinearGradient>
             </AnimatedPressable>
-
-            {impSaved && (
-              <View style={styles.successBanner}>
-                <Text style={styles.successBannerText}>
-                  {'✓ Your CV has been improved by AI and saved. Review the updated text above.'}
-                </Text>
-              </View>
-            )}
           </>
         )}
       </ScrollView>
