@@ -56,7 +56,7 @@ export default function JobDetailScreen() {
     }
     setLoading(false);
     checkSaved();
-  }, [id, jobData]);
+  }, [id, jobData, checkSaved]);
 
   const checkSaved = useCallback(async () => {
     try {

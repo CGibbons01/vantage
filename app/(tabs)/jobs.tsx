@@ -205,7 +205,7 @@ function SkeletonLine({ width, height = 14 }: { width: number | string; height?:
         Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
       ])
     ).start();
-  }, []);
+  }, [opacity]);
   return (
     <Animated.View
       style={{ width, height, borderRadius: height / 2, backgroundColor: COLORS.surfaceElevated, opacity }}
@@ -252,7 +252,7 @@ function JobCard({
       Animated.timing(opacity, { toValue: 1, duration: 300, delay: Math.min(index * 50, 400), useNativeDriver: true }),
       Animated.timing(translateY, { toValue: 0, duration: 300, delay: Math.min(index * 50, 400), useNativeDriver: true }),
     ]).start();
-  }, []);
+  }, [index, opacity, translateY]);
 
   const salaryMin = job.salary_min ? Number(job.salary_min) : null;
   const salaryMax = job.salary_max ? Number(job.salary_max) : null;

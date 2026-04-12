@@ -9,11 +9,6 @@ import {
   Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
-
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const GRID_PADDING = 16;
-const GRID_GAP = 10;
-const CARD_WIDTH = Math.floor((SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3);
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,6 +18,11 @@ import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useAuth } from "@/contexts/AuthContext";
 import { COLORS, getScoreColor } from "@/constants/theme";
 import { apiGet, authenticatedPost } from "@/utils/api";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const GRID_PADDING = 16;
+const GRID_GAP = 10;
+const CARD_WIDTH = Math.floor((SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3);
 
 interface SectionScore {
   name: string;

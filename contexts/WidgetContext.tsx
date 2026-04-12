@@ -2,6 +2,9 @@ import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
 import { Platform } from "react-native";
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const appleTargets = Platform.OS === "ios" ? (() => { try { return require("@bacons/apple-targets"); } catch { return null; } })() : null;
+
 type WidgetContextType = {
   refreshWidget: () => void;
 };
@@ -10,10 +13,9 @@ const WidgetContext = createContext<WidgetContextType | null>(null);
 
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
-    if (Platform.OS === "ios") {
+    if (Platform.OS === "ios" && appleTargets) {
       try {
-        const { ExtensionStorage } = require("@bacons/apple-targets");
-        ExtensionStorage.reloadWidget();
+        appleTargets.ExtensionStorage.reloadWidget();
       } catch (e) {
         // ignore — widget not available
       }
@@ -21,10 +23,9 @@ export function WidgetProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshWidget = useCallback(() => {
-    if (Platform.OS === "ios") {
+    if (Platform.OS === "ios" && appleTargets) {
       try {
-        const { ExtensionStorage } = require("@bacons/apple-targets");
-        ExtensionStorage.reloadWidget();
+        appleTargets.ExtensionStorage.reloadWidget();
       } catch (e) {
         // ignore
       }
