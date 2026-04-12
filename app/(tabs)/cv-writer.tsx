@@ -19,6 +19,7 @@ import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
 import { authenticatedPut } from '@/utils/api';
+import * as fflate from 'fflate';
 
 const USER_CV_KEY = 'user_cv_text';
 
@@ -384,7 +385,7 @@ export default function CVWriterScreen() {
         return;
       }
 
-      // PDF or DOCX — read as base64 and send to edge function for parsing
+      // DOCX — parse on-device using fflate
       const isPdf = assetName.toLowerCase().endsWith('.pdf') || assetMime === 'application/pdf';
       const isDocx =
         assetName.toLowerCase().endsWith('.docx') ||
@@ -392,31 +393,46 @@ export default function CVWriterScreen() {
       const isDoc = assetName.toLowerCase().endsWith('.doc') || assetMime === 'application/msword';
 
       if (!isPdf && !isDocx && !isDoc) {
-        Alert.alert('Unsupported File', 'Please upload a PDF, Word document (.docx), or plain text (.txt) file.');
+        Alert.alert('Unsupported File', 'Please upload a Word document (.docx) or plain text (.txt) file.');
         return;
       }
 
-      console.log('[CVWriter] Reading file as base64 for backend parsing');
-      const base64 = await FS.readAsStringAsync(asset.uri, { encoding: 'base64' as any });
-      console.log('[CVWriter] Base64 length:', base64.length, '— sending to api-cv-parse');
-
-      const { authenticatedPost } = await import('@/utils/api');
-      const result = await authenticatedPost<{ text: string }>('/api/cv/parse', {
-        base64,
-        mimeType: assetMime || (isPdf
-          ? 'application/pdf'
-          : isDocx
-            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            : 'application/msword'),
-        fileName: assetName,
-      });
-
-      if (!result?.text) {
-        throw new Error('No text was extracted from the file.');
+      if (isPdf) {
+        Alert.alert('PDF Not Supported', 'PDF parsing is not supported. Please upload a .docx or .txt file instead.');
+        return;
       }
 
-      console.log('[CVWriter] Parsed text received, length:', result.text.length);
-      setImpCV(result.text);
+      console.log('[CVWriter] Reading DOCX file as base64 for on-device parsing');
+      const base64 = await FS.readAsStringAsync(asset.uri, { encoding: 'base64' as any });
+
+      // Decode base64 → Uint8Array
+      const binaryStr = atob(base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+
+      // Unzip the DOCX (it's a ZIP archive)
+      const unzipped = fflate.unzipSync(bytes);
+
+      // Extract word/document.xml
+      const xmlBytes = unzipped['word/document.xml'];
+      if (!xmlBytes) throw new Error('Not a valid Word document. Please try saving as .docx and uploading again.');
+
+      // Decode XML to string
+      const xmlStr = new TextDecoder().decode(xmlBytes);
+
+      // Strip XML tags to get plain text
+      const text = xmlStr
+        .replace(/<w:p[ >]/g, '\n<w:p ')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+      if (!text) throw new Error('No text could be extracted from the document.');
+
+      console.log('[CVWriter] DOCX parsed on-device, text length:', text.length);
+      setImpCV(text);
       Alert.alert('CV Loaded', 'Your CV has been extracted. Review the text below and tap Save to Profile.');
     } catch (e: any) {
       console.error('[CVWriter] File upload/parse error:', e);
@@ -757,7 +773,7 @@ export default function CVWriterScreen() {
               ) : (
                 <>
                   <Upload size={16} color={COLORS.primaryLight} />
-                  <Text style={styles.uploadFileBtnText}>Upload .txt file</Text>
+                  <Text style={styles.uploadFileBtnText}>Upload .docx or .txt file</Text>
                 </>
               )}
             </AnimatedPressable>
