@@ -367,30 +367,66 @@ export default function CVWriterScreen() {
     const asset = pickerResult.assets[0];
     if (!asset) return;
 
-    const assetName = asset.name || 'cv.txt';
-    console.log('[CVWriter] File selected:', assetName, 'size:', asset.size);
+    const assetName = asset.name || 'cv';
+    const assetMime = asset.mimeType || '';
+    console.log('[CVWriter] File selected:', assetName, 'mime:', assetMime, 'size:', asset.size);
     setUploadingFile(true);
 
     try {
-      // Only .txt files can be read client-side
+      const { default: FS } = await import('expo-file-system');
+
       if (assetName.toLowerCase().endsWith('.txt')) {
-        const { default: FS } = await import('expo-file-system');
+        // Plain text — read directly, no backend needed
         const text = await FS.readAsStringAsync(asset.uri, { encoding: 'utf8' as any });
         setImpCV(text);
         console.log('[CVWriter] TXT file read, length:', text.length);
-        Alert.alert('CV Loaded', 'Your CV text has been loaded. You can now edit it below.');
-      } else {
-        // PDF/DOCX require a backend parser — prompt user to paste manually
-        console.log('[CVWriter] Non-text file selected, prompting manual paste');
-        Alert.alert(
-          'PDF/Word Parsing Unavailable',
-          'PDF and Word document parsing requires a backend connection. Please paste your CV text manually in the text area below.',
-          [{ text: 'OK' }]
-        );
+        Alert.alert('CV Loaded', 'Your CV text has been loaded. You can now review it below and tap Save to Profile.');
+        return;
       }
+
+      // PDF or DOCX — read as base64 and send to edge function for parsing
+      const isPdf = assetName.toLowerCase().endsWith('.pdf') || assetMime === 'application/pdf';
+      const isDocx =
+        assetName.toLowerCase().endsWith('.docx') ||
+        assetMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const isDoc = assetName.toLowerCase().endsWith('.doc') || assetMime === 'application/msword';
+
+      if (!isPdf && !isDocx && !isDoc) {
+        Alert.alert('Unsupported File', 'Please upload a PDF, Word document (.docx), or plain text (.txt) file.');
+        return;
+      }
+
+      console.log('[CVWriter] Reading file as base64 for backend parsing');
+      const base64 = await FS.readAsStringAsync(asset.uri, { encoding: 'base64' as any });
+      console.log('[CVWriter] Base64 length:', base64.length, '— sending to api-cv-parse');
+
+      const { authenticatedPost } = await import('@/utils/api');
+      const result = await authenticatedPost<{ text: string }>('/api/cv/parse', {
+        base64,
+        mimeType: assetMime || (isPdf
+          ? 'application/pdf'
+          : isDocx
+            ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            : 'application/msword'),
+        fileName: assetName,
+      });
+
+      if (!result?.text) {
+        throw new Error('No text was extracted from the file.');
+      }
+
+      console.log('[CVWriter] Parsed text received, length:', result.text.length);
+      setImpCV(result.text);
+      Alert.alert('CV Loaded', 'Your CV has been extracted. Review the text below and tap Save to Profile.');
     } catch (e: any) {
-      console.error('[CVWriter] File read error:', e);
-      Alert.alert('Upload Failed', 'Could not read the file. Please paste your CV text manually.');
+      console.error('[CVWriter] File upload/parse error:', e);
+      const msg = e?.message || 'Could not read the file.';
+      Alert.alert(
+        'Upload Failed',
+        msg.includes('image-based') || msg.includes('password') || msg.includes('.doc format')
+          ? msg
+          : `${msg}\n\nYou can also paste your CV text manually in the field below.`
+      );
     } finally {
       setUploadingFile(false);
     }

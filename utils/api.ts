@@ -12,6 +12,9 @@ function resolveUrl(endpoint: string): string {
     const suffix = endpoint.slice('/api/applications'.length);
     return `${SUPABASE_FUNCTIONS_URL}/api-applications${suffix}`;
   }
+  if (endpoint === '/api/cv/parse') {
+    return `${SUPABASE_FUNCTIONS_URL}/api-cv-parse`;
+  }
   if (endpoint.startsWith('/api/cv')) {
     const suffix = endpoint.slice('/api/cv'.length);
     return `${SUPABASE_FUNCTIONS_URL}/api-cv${suffix}`;
