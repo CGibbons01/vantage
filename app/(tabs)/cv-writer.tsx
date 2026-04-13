@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View,
   Text,
@@ -190,7 +191,8 @@ export default function CVWriterScreen() {
   const insets = useSafeAreaInsets();
   const { isSubscribed } = useSubscription();
 
-  const [mode, setMode] = useState<Mode>('generate');
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const [mode, setMode] = useState<Mode>(tab === 'upload' ? 'upload' : 'generate');
 
   // Generate mode state
   const [genName, setGenName] = useState('');
