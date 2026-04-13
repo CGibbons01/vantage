@@ -20,6 +20,7 @@ import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
 import { authenticatedPut } from '@/utils/api';
+import * as FS from 'expo-file-system';
 import * as fflate from 'fflate';
 
 const USER_CV_KEY = 'user_cv_text';
@@ -376,8 +377,6 @@ export default function CVWriterScreen() {
     setUploadingFile(true);
 
     try {
-      const { default: FS } = await import('expo-file-system');
-
       if (assetName.toLowerCase().endsWith('.txt')) {
         // Plain text — read directly, no backend needed
         const text = await FS.readAsStringAsync(asset.uri, { encoding: 'utf8' as any });
