@@ -21,7 +21,44 @@ import { AnimatedPressable } from '@/components/AnimatedPressable';
 const _extra = Constants.expoConfig?.extra || {};
 const ADZUNA_APP_ID: string = _extra.adzunaAppId || '';
 const ADZUNA_APP_KEY: string = _extra.adzunaAppKey || '';
-const ADZUNA_COUNTRY: string = _extra.adzunaCountry || 'gb';
+
+// ─── Country config ───────────────────────────────────────────────────────────
+
+interface CountryConfig {
+  label: string;
+  code: string;
+  currency: string;
+}
+
+const COUNTRIES: CountryConfig[] = [
+  { label: '🇬🇧 UK',          code: 'gb', currency: '£' },
+  { label: '🇺🇸 USA',         code: 'us', currency: '$' },
+  { label: '🇦🇺 Australia',   code: 'au', currency: 'A$' },
+  { label: '🇨🇦 Canada',      code: 'ca', currency: 'CA$' },
+  { label: '🇩🇪 Germany',     code: 'de', currency: '€' },
+  { label: '🇫🇷 France',      code: 'fr', currency: '€' },
+  { label: '🇮🇳 India',       code: 'in', currency: '₹' },
+  { label: '🇳🇱 Netherlands', code: 'nl', currency: '€' },
+  { label: '🇳🇿 New Zealand', code: 'nz', currency: 'NZ$' },
+  { label: '🇵🇱 Poland',      code: 'pl', currency: 'zł' },
+  { label: '🇸🇬 Singapore',   code: 'sg', currency: 'S$' },
+  { label: '🇿🇦 South Africa',code: 'za', currency: 'R' },
+  { label: '🇧🇷 Brazil',      code: 'br', currency: 'R$' },
+  { label: '🇦🇹 Austria',     code: 'at', currency: '€' },
+  { label: '🇧🇪 Belgium',     code: 'be', currency: '€' },
+  { label: '🇨🇭 Switzerland', code: 'ch', currency: 'CHF' },
+  { label: '🇮🇹 Italy',       code: 'it', currency: '€' },
+  { label: '🇲🇽 Mexico',      code: 'mx', currency: 'MX$' },
+  { label: '🇪🇸 Spain',       code: 'es', currency: '€' },
+];
+
+const DEFAULT_COUNTRY = 'gb';
+
+function getCurrencyForCountry(code: string): string {
+  return COUNTRIES.find(c => c.code === code)?.currency ?? '£';
+}
+
+// ─── Interfaces ───────────────────────────────────────────────────────────────
 
 interface Job {
   id: string;
@@ -58,6 +95,12 @@ function detectSource(redirectUrl: string): SourceInfo | null {
   if (url.includes('totaljobs.com')) return { label: 'Total Jobs', bg: '#EDE7F6', color: '#6200EA' };
   if (url.includes('cv-library.co.uk')) return { label: 'CV-Library', bg: '#E8F5E9', color: '#2E7D32' };
   if (url.includes('monster.com')) return { label: 'Monster', bg: '#F3E5F5', color: '#7B1FA2' };
+  if (url.includes('seek.com')) return { label: 'Seek', bg: '#E3F2FD', color: '#1565C0' };
+  if (url.includes('naukri.com')) return { label: 'Naukri', bg: '#FFF3E0', color: '#E65100' };
+  if (url.includes('ziprecruiter.com')) return { label: 'ZipRecruiter', bg: '#E8F5E9', color: '#1B5E20' };
+  if (url.includes('workopolis.com')) return { label: 'Workopolis', bg: '#EDE7F6', color: '#4527A0' };
+  if (url.includes('xing.com')) return { label: 'Xing', bg: '#E0F2F1', color: '#00695C' };
+  if (url.includes('pnet.co.za')) return { label: 'PNet', bg: '#FCE4EC', color: '#880E4F' };
   return null;
 }
 
@@ -71,7 +114,7 @@ interface Platform {
   buildUrl: (query: string, location: string) => string;
 }
 
-const PLATFORMS: Platform[] = [
+const GLOBAL_PLATFORMS: Platform[] = [
   {
     key: 'indeed',
     label: 'Indeed',
@@ -97,46 +140,6 @@ const PLATFORMS: Platform[] = [
       `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(q)}&locT=C&locId=1`,
   },
   {
-    key: 'hays',
-    label: 'Hays',
-    bg: '#FCE8E6',
-    color: '#C5221F',
-    buildUrl: (q) =>
-      `https://www.hays.com/job-search/jobs?q=${encodeURIComponent(q)}`,
-  },
-  {
-    key: 'roberthalf',
-    label: 'Robert Half',
-    bg: '#FEF3E2',
-    color: '#E37400',
-    buildUrl: (q) =>
-      `https://www.roberthalf.com/us/en/jobs?keywords=${encodeURIComponent(q)}`,
-  },
-  {
-    key: 'reed',
-    label: 'Reed',
-    bg: '#FCE8E6',
-    color: '#B31412',
-    buildUrl: (q, l) =>
-      `https://www.reed.co.uk/jobs/${encodeURIComponent(q)}-jobs-in-${encodeURIComponent(l || 'uk')}`,
-  },
-  {
-    key: 'totaljobs',
-    label: 'Total Jobs',
-    bg: '#EDE7F6',
-    color: '#6200EA',
-    buildUrl: (q, l) =>
-      `https://www.totaljobs.com/jobs/${encodeURIComponent(q)}/in-${encodeURIComponent(l || 'uk')}`,
-  },
-  {
-    key: 'cvlibrary',
-    label: 'CV-Library',
-    bg: '#E8F5E9',
-    color: '#2E7D32',
-    buildUrl: (q) =>
-      `https://www.cv-library.co.uk/search-jobs?q=${encodeURIComponent(q)}`,
-  },
-  {
     key: 'monster',
     label: 'Monster',
     bg: '#F3E5F5',
@@ -146,7 +149,122 @@ const PLATFORMS: Platform[] = [
   },
 ];
 
-function PlatformShortcuts({ query, location }: { query: string; location: string }) {
+const COUNTRY_PLATFORMS: Record<string, Platform[]> = {
+  gb: [
+    {
+      key: 'reed',
+      label: 'Reed',
+      bg: '#FCE8E6',
+      color: '#B31412',
+      buildUrl: (q, l) =>
+        `https://www.reed.co.uk/jobs/${encodeURIComponent(q)}-jobs-in-${encodeURIComponent(l || 'uk')}`,
+    },
+    {
+      key: 'totaljobs',
+      label: 'Total Jobs',
+      bg: '#EDE7F6',
+      color: '#6200EA',
+      buildUrl: (q, l) =>
+        `https://www.totaljobs.com/jobs/${encodeURIComponent(q)}/in-${encodeURIComponent(l || 'uk')}`,
+    },
+    {
+      key: 'cvlibrary',
+      label: 'CV-Library',
+      bg: '#E8F5E9',
+      color: '#2E7D32',
+      buildUrl: (q) =>
+        `https://www.cv-library.co.uk/search-jobs?q=${encodeURIComponent(q)}`,
+    },
+  ],
+  au: [
+    {
+      key: 'seek_au',
+      label: 'Seek',
+      bg: '#E3F2FD',
+      color: '#1565C0',
+      buildUrl: (q, l) =>
+        `https://www.seek.com.au/jobs?keywords=${encodeURIComponent(q)}&where=${encodeURIComponent(l)}`,
+    },
+  ],
+  in: [
+    {
+      key: 'naukri',
+      label: 'Naukri',
+      bg: '#FFF3E0',
+      color: '#E65100',
+      buildUrl: (q, l) =>
+        `https://www.naukri.com/${encodeURIComponent(q)}-jobs?k=${encodeURIComponent(q)}&l=${encodeURIComponent(l)}`,
+    },
+  ],
+  us: [
+    {
+      key: 'ziprecruiter',
+      label: 'ZipRecruiter',
+      bg: '#E8F5E9',
+      color: '#1B5E20',
+      buildUrl: (q, l) =>
+        `https://www.ziprecruiter.com/jobs-search?search=${encodeURIComponent(q)}&location=${encodeURIComponent(l)}`,
+    },
+  ],
+  ca: [
+    {
+      key: 'workopolis',
+      label: 'Workopolis',
+      bg: '#EDE7F6',
+      color: '#4527A0',
+      buildUrl: (q, l) =>
+        `https://www.workopolis.com/jobsearch/find-jobs?ak=${encodeURIComponent(q)}&l=${encodeURIComponent(l)}`,
+    },
+  ],
+  nz: [
+    {
+      key: 'seek_nz',
+      label: 'Seek NZ',
+      bg: '#E3F2FD',
+      color: '#1565C0',
+      buildUrl: (q, l) =>
+        `https://www.seek.co.nz/jobs?keywords=${encodeURIComponent(q)}&where=${encodeURIComponent(l)}`,
+    },
+  ],
+  za: [
+    {
+      key: 'pnet',
+      label: 'PNet',
+      bg: '#FCE4EC',
+      color: '#880E4F',
+      buildUrl: (q) =>
+        `https://www.pnet.co.za/jobs/${encodeURIComponent(q)}`,
+    },
+  ],
+};
+
+const XING_COUNTRIES = new Set(['de', 'at', 'ch']);
+const XING_PLATFORM: Platform = {
+  key: 'xing',
+  label: 'Xing',
+  bg: '#E0F2F1',
+  color: '#00695C',
+  buildUrl: (q) =>
+    `https://www.xing.com/jobs/search?keywords=${encodeURIComponent(q)}`,
+};
+
+function getPlatformsForCountry(countryCode: string): Platform[] {
+  const countrySpecific = COUNTRY_PLATFORMS[countryCode] ?? [];
+  const xing = XING_COUNTRIES.has(countryCode) ? [XING_PLATFORM] : [];
+  return [...GLOBAL_PLATFORMS, ...countrySpecific, ...xing];
+}
+
+function PlatformShortcuts({
+  query,
+  location,
+  selectedCountry,
+}: {
+  query: string;
+  location: string;
+  selectedCountry: string;
+}) {
+  const platforms = getPlatformsForCountry(selectedCountry);
+
   const handlePlatformPress = async (platform: Platform) => {
     const url = platform.buildUrl(query, location);
     console.log('[Jobs] Platform shortcut pressed:', platform.label, '→', url);
@@ -164,7 +282,7 @@ function PlatformShortcuts({ query, location }: { query: string; location: strin
       style={styles.platformScroll}
       contentContainerStyle={styles.platformContent}
     >
-      {PLATFORMS.map((platform) => (
+      {platforms.map((platform) => (
         <AnimatedPressable
           key={platform.key}
           style={[styles.platformBtn, { backgroundColor: platform.bg, borderColor: platform.color + '40' }]}
@@ -239,10 +357,12 @@ function JobCard({
   job,
   onPress,
   index,
+  currencySymbol,
 }: {
   job: Job;
   onPress: () => void;
   index: number;
+  currencySymbol: string;
 }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(12)).current;
@@ -257,12 +377,13 @@ function JobCard({
   const salaryMin = job.salary_min ? Number(job.salary_min) : null;
   const salaryMax = job.salary_max ? Number(job.salary_max) : null;
   const hasSalary = salaryMin != null || salaryMax != null;
+  const sym = currencySymbol;
   const salaryText = hasSalary
     ? salaryMin && salaryMax
-      ? `£${Math.round(salaryMin / 1000)}k – £${Math.round(salaryMax / 1000)}k`
+      ? `${sym}${Math.round(salaryMin / 1000)}k – ${sym}${Math.round(salaryMax / 1000)}k`
       : salaryMin
-      ? `From £${Math.round(salaryMin / 1000)}k`
-      : `Up to £${Math.round((salaryMax ?? 0) / 1000)}k`
+      ? `From ${sym}${Math.round(salaryMin / 1000)}k`
+      : `Up to ${sym}${Math.round((salaryMax ?? 0) / 1000)}k`
     : null;
 
   const snippet = job.description?.replace(/<[^>]*>/g, '').slice(0, 120) ?? '';
@@ -303,7 +424,7 @@ function JobCard({
           </View>
           {salaryText && (
             <View style={styles.metaItem}>
-              <Text style={styles.poundSign}>£</Text>
+              <Text style={styles.currencySign}>{sym}</Text>
               <Text style={styles.metaText}>{salaryText}</Text>
             </View>
           )}
@@ -356,6 +477,7 @@ export default function JobsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const [selectedCountry, setSelectedCountry] = useState<string>(DEFAULT_COUNTRY);
   const [keywords, setKeywords] = useState('');
   const [location, setLocation] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -368,8 +490,16 @@ export default function JobsScreen() {
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
 
-  const searchJobs = useCallback(async (pageNum = 1, append = false, overrideKeywords?: string) => {
+  const currencySymbol = getCurrencyForCountry(selectedCountry);
+
+  const searchJobs = useCallback(async (
+    pageNum = 1,
+    append = false,
+    overrideKeywords?: string,
+    overrideCountry?: string,
+  ) => {
     const kw = overrideKeywords !== undefined ? overrideKeywords : keywords;
+    const country = overrideCountry !== undefined ? overrideCountry : selectedCountry;
     if (append) setLoadingMore(true);
     else setLoading(true);
     setError('');
@@ -382,7 +512,7 @@ export default function JobsScreen() {
       if (kw.trim()) params.set('what', kw.trim());
       if (location.trim()) params.set('where', location.trim());
 
-      const url = `https://api.adzuna.com/v1/api/jobs/${ADZUNA_COUNTRY}/search/${pageNum}?${params.toString()}`;
+      const url = `https://api.adzuna.com/v1/api/jobs/${country}/search/${pageNum}?${params.toString()}`;
       console.log('[Jobs] Fetching from Adzuna:', url);
       const response = await fetch(url, {
         headers: { Accept: 'application/json' },
@@ -429,10 +559,22 @@ export default function JobsScreen() {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [keywords, location]);
+  }, [keywords, location, selectedCountry]);
+
+  const handleCountrySelect = (code: string) => {
+    if (code === selectedCountry) return;
+    console.log('[Jobs] Country selected:', code);
+    setSelectedCountry(code);
+    setJobs([]);
+    setPage(1);
+    setHasMore(false);
+    if (searched) {
+      searchJobs(1, false, undefined, code);
+    }
+  };
 
   const handleSearch = () => {
-    console.log('[Jobs] Search button pressed - keywords:', keywords, 'location:', location);
+    console.log('[Jobs] Search button pressed - keywords:', keywords, 'location:', location, 'country:', selectedCountry);
     setActiveCategory(null);
     searchJobs(1, false);
   };
@@ -474,6 +616,29 @@ export default function JobsScreen() {
         )}
       </View>
 
+      {/* Country selector */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.countryScroll}
+        contentContainerStyle={styles.countryContent}
+      >
+        {COUNTRIES.map((country) => {
+          const isActive = selectedCountry === country.code;
+          return (
+            <AnimatedPressable
+              key={country.code}
+              style={[styles.countryChip, isActive && styles.countryChipActive]}
+              onPress={() => handleCountrySelect(country.code)}
+            >
+              <Text style={[styles.countryChipText, isActive && styles.countryChipTextActive]}>
+                {country.label}
+              </Text>
+            </AnimatedPressable>
+          );
+        })}
+      </ScrollView>
+
       {/* Search Bar */}
       <View style={styles.searchSection}>
         <View style={styles.searchRow}>
@@ -511,7 +676,7 @@ export default function JobsScreen() {
       </View>
 
       {/* Platform shortcuts */}
-      <PlatformShortcuts query={keywords} location={location} />
+      <PlatformShortcuts query={keywords} location={location} selectedCountry={selectedCountry} />
 
       {/* Category chips */}
       <ScrollView
@@ -560,6 +725,7 @@ export default function JobsScreen() {
             <JobCard
               job={item}
               index={index}
+              currencySymbol={currencySymbol}
               onPress={() => {
                 console.log('[Jobs] Navigate to job detail:', item.id, item.title);
                 router.push({
@@ -617,6 +783,23 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
   headerCount: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
+  // Country selector
+  countryScroll: { marginBottom: 8 },
+  countryContent: { paddingHorizontal: 20, gap: 8, paddingVertical: 4 },
+  countryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  countryChipActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+  countryChipText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
+  countryChipTextActive: { color: COLORS.primaryLight },
   searchSection: { paddingHorizontal: 20, gap: 8, marginBottom: 8 },
   searchRow: { flexDirection: 'row', gap: 8 },
   // Platform shortcuts
@@ -718,7 +901,7 @@ const styles = StyleSheet.create({
   jobMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   metaText: { fontSize: 12, color: COLORS.textSecondary },
-  poundSign: { fontSize: 12, color: COLORS.textSecondary },
+  currencySign: { fontSize: 12, color: COLORS.textSecondary },
   badgeRow: { flexDirection: 'row', gap: 6, marginBottom: 6, flexWrap: 'wrap' },
   categoryBadge: {
     alignSelf: 'flex-start',
