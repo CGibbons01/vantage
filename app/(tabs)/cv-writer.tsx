@@ -20,7 +20,7 @@ import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
 import { authenticatedPut } from '@/utils/api';
-import * as FS from 'expo-file-system';
+import * as FS from 'expo-file-system/legacy';
 import * as fflate from 'fflate';
 
 const USER_CV_KEY = 'user_cv_text';
