@@ -569,43 +569,7 @@ export default function CVWriterScreen() {
         <Text style={styles.headerTitle}>AI CV Writer</Text>
       </View>
 
-      {/* Mode Toggle */}
-      <View style={styles.modeToggle}>
-        <AnimatedPressable
-          style={[styles.modeBtn, mode === 'generate' && styles.modeBtnActive]}
-          onPress={() => { console.log('[CVWriter] Switch to Generate mode'); setMode('generate'); }}
-        >
-          {mode === 'generate' ? (
-            <LinearGradient
-              colors={['#7C3AED', '#4F46E5']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.modeBtnGradient}
-            >
-              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Generate CV</Text>
-            </LinearGradient>
-          ) : (
-            <Text style={styles.modeBtnText}>Generate CV</Text>
-          )}
-        </AnimatedPressable>
-        <AnimatedPressable
-          style={[styles.modeBtn, mode === 'upload' && styles.modeBtnActive]}
-          onPress={() => { console.log('[CVWriter] Switch to Upload CV mode'); setMode('upload'); }}
-        >
-          {mode === 'upload' ? (
-            <LinearGradient
-              colors={['#7C3AED', '#4F46E5']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.modeBtnGradient}
-            >
-              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Upload CV</Text>
-            </LinearGradient>
-          ) : (
-            <Text style={styles.modeBtnText}>Upload CV</Text>
-          )}
-        </AnimatedPressable>
-      </View>
+
 
       <ScrollView
         style={styles.scroll}
@@ -881,32 +845,10 @@ export default function CVWriterScreen() {
               </Text>
             </View>
 
-            {/* Primary action row — Save first, Upload second, Clear third */}
+            {/* Primary action row — Upload first, Save second, Clear third */}
             <View style={styles.topActionRow}>
               <AnimatedPressable
-                style={[styles.topPrimaryBtn, savingCV && styles.topBtnDisabled]}
-                onPress={handleSaveCV}
-                disabled={savingCV}
-              >
-                <LinearGradient
-                  colors={['#7C3AED', '#4F46E5']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.topPrimaryBtnGradient}
-                >
-                  {savingCV ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <>
-                      <Save size={15} color="#FFFFFF" />
-                      <Text style={styles.topPrimaryBtnText}>Save to Profile</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </AnimatedPressable>
-
-              <AnimatedPressable
-                style={[styles.topSecondaryBtn, uploadingFile && styles.topBtnDisabled]}
+                style={[styles.topActionBtn, uploadingFile && styles.topBtnDisabled]}
                 onPress={handleUploadFile}
                 disabled={uploadingFile}
               >
@@ -915,17 +857,32 @@ export default function CVWriterScreen() {
                 ) : (
                   <Upload size={15} color={COLORS.primaryLight} />
                 )}
-                <Text style={[styles.topSecondaryBtnText, { color: COLORS.primaryLight }]}>
-                  {uploadingFile ? 'Reading…' : 'Upload file'}
+                <Text style={[styles.topActionBtnText, { color: COLORS.primaryLight }]}>
+                  {uploadingFile ? 'Reading…' : 'Upload File'}
                 </Text>
               </AnimatedPressable>
 
               <AnimatedPressable
-                style={styles.topSecondaryBtn}
+                style={[styles.topActionBtn, styles.topActionBtnPrimary, savingCV && styles.topBtnDisabled]}
+                onPress={handleSaveCV}
+                disabled={savingCV}
+              >
+                {savingCV ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" style={{ width: 15, height: 15 }} />
+                ) : (
+                  <Save size={15} color="#FFFFFF" />
+                )}
+                <Text style={[styles.topActionBtnText, { color: '#FFFFFF' }]}>
+                  {savingCV ? 'Saving…' : 'Save to Profile'}
+                </Text>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={styles.topActionBtn}
                 onPress={handleClearUpload}
               >
                 <X size={15} color={COLORS.textSecondary} />
-                <Text style={styles.topSecondaryBtnText}>Clear</Text>
+                <Text style={styles.topActionBtnText}>Clear</Text>
               </AnimatedPressable>
             </View>
 
@@ -1067,44 +1024,32 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
 
-  // Top action row — primary + secondary buttons
+  // Top action row — all buttons equal width, wrapping
   topActionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 20,
-    alignItems: 'center',
   },
-  topPrimaryBtn: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-    minHeight: 44,
-  },
-  topPrimaryBtnGradient: {
+  topActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
-    height: 44,
-    paddingHorizontal: 16,
-  },
-  topPrimaryBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  topSecondaryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
+    gap: 6,
+    flex: 1,
+    minWidth: 90,
     backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 12,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     height: 44,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  topSecondaryBtnText: {
+  topActionBtnPrimary: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  topActionBtnText: {
     fontSize: 13,
     fontWeight: '600',
     color: COLORS.textSecondary,
