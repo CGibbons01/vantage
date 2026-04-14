@@ -259,7 +259,7 @@ export default function CVWriterScreen() {
       <View style={{ flex: 1, paddingTop: insets.top }}>
         <PremiumLock
           featureName="AI CV Writer"
-          description="Generate a polished, ATS-optimised CV or improve your existing one with AI-powered suggestions and scoring."
+          description="Generate a polished, ATS-optimised CV or improve your existing one with AI-powered suggestions."
         />
       </View>
     );
@@ -899,7 +899,7 @@ export default function CVWriterScreen() {
           <>
             <View style={styles.infoBox}>
               <Text style={styles.infoBoxText}>
-                {"Paste or upload your CV below. We'll extract your skills, summary, and headline to pre-fill your profile and the CV Writer."}
+                {"Paste or upload your CV below. We'll extract your skills, summary, and headline to update your profile, and pre-fill your name and email in the CV Writer."}
               </Text>
             </View>
 

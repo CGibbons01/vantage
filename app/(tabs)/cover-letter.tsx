@@ -224,7 +224,7 @@ export default function CoverLetterScreen() {
         <View style={styles.headerIconCircle}>
           <Mail size={20} color={COLORS.primaryLight} />
         </View>
-        <Text style={styles.headerTitle}>Cover Letter</Text>
+        <Text style={styles.headerTitle}>AI Cover Letter</Text>
       </View>
 
       <ScrollView

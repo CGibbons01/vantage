@@ -285,7 +285,7 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.emptyStateTitle}>Complete your profile</Text>
             <Text style={styles.emptyStateSubtext}>
-              Upload your CV to unlock AI-powered job matching and career insights
+              Build your CV with the AI CV Writer to unlock cover letters and personalised career insights.
             </Text>
             <AnimatedPressable
               style={styles.emptyStateBtn}

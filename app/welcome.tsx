@@ -120,7 +120,7 @@ export default function WelcomeScreen() {
         <FeatureRow
           icon="doc.text.fill"
           title="Smart CV Analysis"
-          description="Upload your CV and get an instant AI-powered score and improvement tips"
+          description="Upload your CV and get instant AI-powered insights and improvement suggestions"
           delay={200}
           gradientColors={['#7C3AED', '#4F46E5']}
         />
@@ -128,7 +128,7 @@ export default function WelcomeScreen() {
         <FeatureRow
           icon="briefcase.fill"
           title="Matched Job Search"
-          description="Find roles that fit your skills with AI match percentages"
+          description="Search thousands of live jobs across multiple countries and platforms"
           delay={320}
           gradientColors={['#4F46E5', '#3B82F6']}
         />
