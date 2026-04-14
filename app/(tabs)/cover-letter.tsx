@@ -16,6 +16,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
+import { authenticatedPost } from '@/utils/api';
 
 type Tone = 'professional' | 'enthusiastic' | 'concise';
 
@@ -158,8 +159,8 @@ export default function CoverLetterScreen() {
     setLoading(true);
     setResult(null);
     try {
-      // Local template generation — no backend needed
-      const data = generateCoverLetterLocally({
+      console.log('[CoverLetter] Calling POST /api/generate-cover-letter');
+      const data = await authenticatedPost<CoverLetterResult>('/api/generate-cover-letter', {
         applicantName: applicantName.trim(),
         jobTitle: jobTitle.trim(),
         companyName: companyName.trim(),
@@ -167,11 +168,26 @@ export default function CoverLetterScreen() {
         cvSummary: cvSummary.trim(),
         tone,
       });
-      console.log('[CoverLetter] Generated locally, word count:', data.word_count);
+      console.log('[CoverLetter] AI generation succeeded, word count:', data.word_count);
       setResult(data);
     } catch (e: any) {
-      console.error('[CoverLetter] Generate error:', e);
-      Alert.alert('Generation failed', e?.message || 'Could not generate your cover letter. Please try again.');
+      console.warn('[CoverLetter] AI generation failed, falling back to local:', e?.message);
+      try {
+        const data = generateCoverLetterLocally({
+          applicantName: applicantName.trim(),
+          jobTitle: jobTitle.trim(),
+          companyName: companyName.trim(),
+          jobDescription: jobDescription.trim(),
+          cvSummary: cvSummary.trim(),
+          tone,
+        });
+        console.log('[CoverLetter] Local fallback succeeded, word count:', data.word_count);
+        setResult(data);
+        Alert.alert('Generated offline', 'Generated offline — connect to internet for AI-enhanced results.');
+      } catch (fallbackErr: any) {
+        console.error('[CoverLetter] Local fallback also failed:', fallbackErr);
+        Alert.alert('Generation failed', fallbackErr?.message || 'Could not generate your cover letter. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -358,7 +374,10 @@ export default function CoverLetterScreen() {
             style={styles.primaryBtnGradient}
           >
             {loading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <>
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text style={styles.primaryBtnText}>Generating with AI…</Text>
+              </>
             ) : (
               <>
                 <Mail size={18} color="#FFFFFF" />

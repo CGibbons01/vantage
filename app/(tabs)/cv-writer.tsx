@@ -19,7 +19,7 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { COLORS } from '@/constants/theme';
 import { AnimatedPressable } from '@/components/AnimatedPressable';
 import { PremiumLock } from '@/components/PremiumLock';
-import { authenticatedPut } from '@/utils/api';
+import { authenticatedPut, authenticatedPost } from '@/utils/api';
 import * as FS from 'expo-file-system/legacy';
 import * as fflate from 'fflate';
 
@@ -314,7 +314,8 @@ export default function CVWriterScreen() {
     setGenLoading(true);
     setGenResult(null);
     try {
-      const result = generateCVLocally({
+      console.log('[CVWriter] POST /api/generate-cv-content');
+      const result = await authenticatedPost<GenerateResult>('/api/generate-cv-content', {
         name: genName.trim(),
         email: genEmail.trim(),
         targetRole: genRole.trim(),
@@ -323,13 +324,37 @@ export default function CVWriterScreen() {
         education: educationEntries,
         skills,
       });
-      console.log('[CVWriter] CV generated locally');
+      console.log('[CVWriter] AI CV generated successfully');
       setGenResult(result);
       await AsyncStorage.setItem(USER_CV_KEY, result.cv_text);
-      console.log('[CVWriter] Saved generated CV to AsyncStorage');
+      console.log('[CVWriter] Saved AI-generated CV to AsyncStorage');
     } catch (e: any) {
-      console.error('[CVWriter] Generate error:', e);
-      Alert.alert('Generation failed', e?.message || 'Could not generate your CV. Please try again.');
+      console.error('[CVWriter] AI generate error, falling back to local:', e);
+      try {
+        const result = generateCVLocally({
+          name: genName.trim(),
+          email: genEmail.trim(),
+          targetRole: genRole.trim(),
+          summary: genSummary.trim(),
+          experience: experienceEntries,
+          education: educationEntries,
+          skills,
+        });
+        console.log('[CVWriter] CV generated locally (fallback)');
+        setGenResult({
+          ...result,
+          sections: {
+            ...result.sections,
+            professional_summary: (result.sections.professional_summary || '') +
+              '\n\n⚠ Generated offline — connect to internet for AI-enhanced CV.',
+          },
+        });
+        await AsyncStorage.setItem(USER_CV_KEY, result.cv_text);
+        console.log('[CVWriter] Saved fallback CV to AsyncStorage');
+      } catch (fallbackErr: any) {
+        console.error('[CVWriter] Fallback generate error:', fallbackErr);
+        Alert.alert('Generation failed', fallbackErr?.message || 'Could not generate your CV. Please try again.');
+      }
     } finally {
       setGenLoading(false);
     }
@@ -569,7 +594,44 @@ export default function CVWriterScreen() {
         <Text style={styles.headerTitle}>AI CV Writer</Text>
       </View>
 
+      {/* Mode toggle */}
+      <View style={styles.modeToggle}>
+        <AnimatedPressable
+          style={[styles.modeBtn, mode === 'generate' && styles.modeBtnActive]}
+          onPress={() => { console.log('[CVWriter] Mode toggle: generate'); setMode('generate'); }}
+        >
+          {mode === 'generate' ? (
+            <LinearGradient
+              colors={['#7C3AED', '#4F46E5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modeBtnGradient}
+            >
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Generate CV</Text>
+            </LinearGradient>
+          ) : (
+            <Text style={styles.modeBtnText}>Generate CV</Text>
+          )}
+        </AnimatedPressable>
 
+        <AnimatedPressable
+          style={[styles.modeBtn, mode === 'upload' && styles.modeBtnActive]}
+          onPress={() => { console.log('[CVWriter] Mode toggle: upload'); setMode('upload'); }}
+        >
+          {mode === 'upload' ? (
+            <LinearGradient
+              colors={['#7C3AED', '#4F46E5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modeBtnGradient}
+            >
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Upload CV</Text>
+            </LinearGradient>
+          ) : (
+            <Text style={styles.modeBtnText}>Upload CV</Text>
+          )}
+        </AnimatedPressable>
+      </View>
 
       <ScrollView
         style={styles.scroll}
@@ -582,33 +644,29 @@ export default function CVWriterScreen() {
             {/* Primary action row — Generate first, Clear second */}
             <View style={styles.topActionRow}>
               <AnimatedPressable
-                style={[styles.topPrimaryBtn, genLoading && styles.topBtnDisabled]}
+                style={[styles.topActionBtn, styles.topActionBtnPrimary, genLoading && styles.topBtnDisabled]}
                 onPress={handleGenerate}
                 disabled={genLoading}
               >
-                <LinearGradient
-                  colors={['#7C3AED', '#4F46E5']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.topPrimaryBtnGradient}
-                >
-                  {genLoading ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <>
-                      <FileText size={15} color="#FFFFFF" />
-                      <Text style={styles.topPrimaryBtnText}>Generate CV</Text>
-                    </>
-                  )}
-                </LinearGradient>
+                {genLoading ? (
+                  <>
+                    <ActivityIndicator color="#FFFFFF" size="small" style={{ width: 15, height: 15 }} />
+                    <Text style={[styles.topActionBtnText, { color: '#FFFFFF' }]}>Generating with AI…</Text>
+                  </>
+                ) : (
+                  <>
+                    <FileText size={15} color="#FFFFFF" />
+                    <Text style={[styles.topActionBtnText, { color: '#FFFFFF' }]}>Generate CV</Text>
+                  </>
+                )}
               </AnimatedPressable>
 
               <AnimatedPressable
-                style={styles.topSecondaryBtn}
+                style={styles.topActionBtn}
                 onPress={handleClearGenerate}
               >
                 <X size={15} color={COLORS.textSecondary} />
-                <Text style={styles.topSecondaryBtnText}>Clear</Text>
+                <Text style={styles.topActionBtnText}>Clear</Text>
               </AnimatedPressable>
             </View>
 
