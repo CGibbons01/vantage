@@ -35,13 +35,24 @@ interface Job {
 }
 
 export default function JobDetailScreen() {
-  const { id, jobData } = useLocalSearchParams<{ id: string; jobData?: string }>();
+  const { id, jobData, currencySymbol: currencySymbolParam } = useLocalSearchParams<{ id: string; jobData?: string; currencySymbol?: string }>();
+  const currencySymbol = currencySymbolParam || '£';
   const insets = useSafeAreaInsets();
 
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const checkSaved = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SAVED_JOBS_KEY);
+      const savedIds: string[] = raw ? JSON.parse(raw) : [];
+      setSaved(savedIds.includes(id));
+    } catch (e) {
+      // silently ignore
+    }
+  }, [id]);
 
   useEffect(() => {
     console.log('[JobDetail] Loading job:', id);
@@ -57,16 +68,6 @@ export default function JobDetailScreen() {
     setLoading(false);
     checkSaved();
   }, [id, jobData, checkSaved]);
-
-  const checkSaved = useCallback(async () => {
-    try {
-      const raw = await AsyncStorage.getItem(SAVED_JOBS_KEY);
-      const savedIds: string[] = raw ? JSON.parse(raw) : [];
-      setSaved(savedIds.includes(id));
-    } catch (e) {
-      // silently ignore
-    }
-  }, [id]);
 
   const handleSave = async () => {
     if (!job) return;
@@ -110,10 +111,10 @@ export default function JobDetailScreen() {
   const hasSalary = salaryMin != null || salaryMax != null;
   const salaryText = hasSalary
     ? salaryMin && salaryMax
-      ? `£${Math.round(salaryMin / 1000)}k – £${Math.round(salaryMax / 1000)}k/yr`
+      ? `${currencySymbol}${Math.round(salaryMin / 1000)}k – ${currencySymbol}${Math.round(salaryMax / 1000)}k/yr`
       : salaryMin
-      ? `From £${Math.round(salaryMin / 1000)}k/yr`
-      : `Up to £${Math.round((salaryMax ?? 0) / 1000)}k/yr`
+      ? `From ${currencySymbol}${Math.round(salaryMin / 1000)}k/yr`
+      : `Up to ${currencySymbol}${Math.round((salaryMax ?? 0) / 1000)}k/yr`
     : null;
 
   const cleanDescription = job?.description?.replace(/<[^>]*>/g, '') ?? '';
@@ -163,7 +164,7 @@ export default function JobDetailScreen() {
           </View>
           {salaryText && (
             <View style={styles.metaChip}>
-              <Text style={styles.poundIcon}>£</Text>
+              <Text style={styles.poundIcon}>{currencySymbol}</Text>
               <Text style={styles.metaChipText}>{salaryText}</Text>
             </View>
           )}

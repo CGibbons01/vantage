@@ -733,6 +733,7 @@ export default function JobsScreen() {
                   params: {
                     id: item.id,
                     jobData: JSON.stringify(item),
+                    currencySymbol: currencySymbol,
                   },
                 } as any);
               }}

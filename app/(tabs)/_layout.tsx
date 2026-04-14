@@ -1,6 +1,8 @@
 import React from "react";
-import { View, Image } from "react-native";
+import { Dimensions, Image, View } from "react-native";
 import { Tabs } from "expo-router";
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import FloatingTabBar from "@/components/FloatingTabBar";
 import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
 
@@ -45,7 +47,7 @@ export default function TabLayout() {
         <Tabs.Screen name="notifications" options={{ href: null }} />
         <Tabs.Screen name="profile" options={{ href: null }} />
       </Tabs>
-      <FloatingTabBar tabs={TABS} containerWidth={420} />
+      <FloatingTabBar tabs={TABS} containerWidth={Math.min(420, SCREEN_WIDTH - 32)} />
     </View>
   );
 }

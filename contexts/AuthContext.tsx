@@ -206,6 +206,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithApple = async () => {
     if (__DEV__) console.log('[AuthContext] signInWithApple called');
+    if (Platform.OS === 'android') {
+      throw new Error('Sign in with Apple is not available on Android.');
+    }
     if (Platform.OS === 'ios') {
       try {
         const credential = await AppleAuthentication.signInAsync({

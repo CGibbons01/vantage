@@ -3,10 +3,13 @@ import {
   StyleSheet,
   View,
   Text,
+  ActivityIndicator,
+  Platform,
   Dimensions,
   Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { BodyScrollView } from "@/components/BodyScrollView";
@@ -14,7 +17,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import { useAuth } from "@/contexts/AuthContext";
 import { COLORS, getScoreColor } from "@/constants/theme";
-import { apiGet } from "@/utils/api";
+import { apiGet, authenticatedPost } from "@/utils/api";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const GRID_PADDING = 16;
@@ -43,7 +46,7 @@ interface Profile {
 
 const QUICK_ACTIONS = [
   { label: "Search Jobs", icon: "briefcase-outline" as const, route: "/(tabs)/jobs", gradient: ['#7C3AED', '#4F46E5'] as const },
-  { label: "CV Writer", icon: "pencil-outline" as const, route: "/(tabs)/cv-writer", gradient: ['#4F46E5', '#3B82F6'] as const },
+  { label: "AI CV Writer", icon: "pencil-outline" as const, route: "/(tabs)/cv-writer", gradient: ['#4F46E5', '#3B82F6'] as const },
   { label: "Cover Letter", icon: "mail-outline" as const, route: "/(tabs)/cover-letter", gradient: ['#3B82F6', '#06B6D4'] as const },
   { label: "Applications", icon: "list-outline" as const, route: "/(tabs)/applications", gradient: ['#EC4899', '#7C3AED'] as const },
   { label: "View Profile", icon: "person-outline" as const, route: "/profile/edit", gradient: ['#7C3AED', '#EC4899'] as const },
@@ -84,6 +87,10 @@ export default function HomeScreen() {
   const [industryFit, setIndustryFit] = useState<string | null>(null);
   const [industryScores, setIndustryScores] = useState<{ industry: string; score: number }[] | null>(null);
   const [improvementTips, setImprovementTips] = useState<string[] | null>(null);
+  const [uploadStrengths, setUploadStrengths] = useState<string[] | null>(null);
+  const [uploadImprovements, setUploadImprovements] = useState<string[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const firstName = profile?.first_name
     || (user?.name ? user.name.split(" ")[0] : null)
@@ -96,10 +103,10 @@ export default function HomeScreen() {
   const scoreColor = scoreToShow != null ? getScoreColor(scoreToShow) : COLORS.primaryLight;
 
   const strengths: string[] | null =
-    profile?.strengths ?? profile?.analysis?.strengths ?? null;
+    uploadStrengths ?? profile?.strengths ?? profile?.analysis?.strengths ?? null;
 
   const tipsToShow: string[] | null =
-    improvementTips ?? profile?.improvements ?? profile?.analysis?.improvements ?? null;
+    improvementTips ?? uploadImprovements ?? profile?.improvements ?? profile?.analysis?.improvements ?? null;
 
   const hasInsights = scoreToShow != null;
 
@@ -117,6 +124,86 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
+
+  const handleUploadCV = async () => {
+    console.log('[Dashboard] Upload CV button pressed');
+    setUploadError(null);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        console.log('[Dashboard] Document picker cancelled');
+        return;
+      }
+
+      const file = result.assets[0];
+      const fileName = file.name ?? 'cv.pdf';
+      const lower = fileName.toLowerCase();
+      const mimeType = lower.endsWith('.docx')
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'application/pdf';
+
+      console.log('[Dashboard] CV file selected:', fileName, 'mime:', mimeType);
+      setUploading(true);
+
+      let base64: string;
+      if (Platform.OS === 'web') {
+        console.log('[Dashboard] Web platform — reading file via FileReader');
+        const blob = await fetch(file.uri).then((r) => r.blob());
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const raw = dataUrl.split(',')[1] ?? '';
+            resolve(raw);
+          };
+          reader.onerror = () => reject(new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const FileSystem = await import('expo-file-system/legacy');
+        base64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+      }
+      console.log('[Dashboard] File read as base64, length:', base64.length);
+
+      console.log('[Dashboard] POST /api/cv/score — sending base64 JSON to backend');
+      const data = await authenticatedPost('/api/cv/score', {
+        file_base64: base64,
+        file_name: fileName,
+        mime_type: mimeType,
+      });
+      console.log('[Dashboard] CV score result:', data);
+
+      setCvScore(data.overall_score ?? data.score ?? null);
+      setIndustryFit(data.industry_fit ?? null);
+      setIndustryScores(data.industry_scores ?? null);
+      setImprovementTips(data.improvement_tips ?? null);
+      setUploadStrengths(data.strengths ?? null);
+      setUploadImprovements(data.improvements ?? null);
+    } catch (err: any) {
+      console.log('[Dashboard] CV upload error:', err?.message ?? err);
+      setUploadError(err?.message ?? 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleReupload = () => {
+    console.log("[Dashboard] Re-upload CV pressed");
+    setCvScore(null);
+    setIndustryFit(null);
+    setIndustryScores(null);
+    setImprovementTips(null);
+    setUploadStrengths(null);
+    setUploadImprovements(null);
+    setProfile((prev) => prev ? { ...prev, cv_score: null } : null);
+  };
 
   const handleQuickAction = (label: string, route: string) => {
     console.log("[Dashboard] Quick action pressed:", label, "→", route);
@@ -156,18 +243,16 @@ export default function HomeScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.uploadIconCircle}
           >
-            <Ionicons name="person-add-outline" size={28} color={COLORS.primaryLight} />
+            <Ionicons name="cloud-upload-outline" size={28} color={COLORS.primaryLight} />
           </LinearGradient>
-          <Text style={styles.cardTitle}>Create Your Profile</Text>
+          <Text style={styles.cardTitle}>Upload Your CV</Text>
           <Text style={styles.cardSubtitle}>
-            Paste your CV into the AI CV Writer to build an industry-standard profile and get matched with the best jobs.
+            Let our AI analyse your CV, score it, and match you with the best opportunities.
           </Text>
           <AnimatedPressable
-            style={styles.uploadButton}
-            onPress={() => {
-              console.log('[Dashboard] Get Started pressed — navigating to CV Writer upload tab');
-              router.push('/(tabs)/cv-writer?tab=upload' as any);
-            }}
+            style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
+            onPress={handleUploadCV}
+            disabled={uploading}
           >
             <LinearGradient
               colors={['#7C3AED', '#4F46E5']}
@@ -175,10 +260,19 @@ export default function HomeScreen() {
               end={{ x: 1, y: 0 }}
               style={styles.uploadButtonGradient}
             >
-              <Ionicons name="person-add-outline" size={18} color="#FFFFFF" style={styles.uploadButtonIcon} />
-              <Text style={styles.uploadButtonText}>Get Started</Text>
+              {uploading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" style={styles.uploadButtonIcon} />
+                  <Text style={styles.uploadButtonText}>Upload CV (PDF or Word)</Text>
+                </>
+              )}
             </LinearGradient>
           </AnimatedPressable>
+          {uploadError != null && (
+            <Text style={styles.uploadError}>{uploadError}</Text>
+          )}
         </View>
       ) : (
         <View style={styles.card}>
@@ -189,13 +283,10 @@ export default function HomeScreen() {
           )}
           <AnimatedPressable
             style={styles.reuploadButton}
-            onPress={() => {
-              console.log('[Dashboard] Update CV pressed — navigating to CV Writer upload tab');
-              router.push('/(tabs)/cv-writer?tab=upload' as any);
-            }}
+            onPress={handleReupload}
           >
-            <Ionicons name="pencil-outline" size={16} color={COLORS.primaryLight} style={styles.reuploadIcon} />
-            <Text style={styles.reuploadText}>Update CV</Text>
+            <Ionicons name="refresh-outline" size={16} color={COLORS.primaryLight} style={styles.reuploadIcon} />
+            <Text style={styles.reuploadText}>Re-upload CV</Text>
           </AnimatedPressable>
         </View>
       )}
@@ -380,6 +471,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     justifyContent: "center",
   },
+  uploadButtonDisabled: {
+    opacity: 0.7,
+  },
   uploadButtonIcon: {
     marginRight: 8,
   },
@@ -387,6 +481,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  uploadError: {
+    marginTop: 12,
+    fontSize: 13,
+    color: COLORS.error,
+    textAlign: "center",
   },
   scoreLabel: {
     fontSize: 13,

@@ -352,7 +352,6 @@ export default function CVWriterScreen() {
         type: [
           'text/plain',
           'application/pdf',
-          'application/msword',
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ],
         copyToCacheDirectory: true,
@@ -391,10 +390,9 @@ export default function CVWriterScreen() {
       const isDocx =
         assetName.toLowerCase().endsWith('.docx') ||
         assetMime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      const isDoc = assetName.toLowerCase().endsWith('.doc') || assetMime === 'application/msword';
 
-      if (!isPdf && !isDocx && !isDoc) {
-        Alert.alert('Unsupported File', 'Please upload a Word document (.docx) or plain text (.txt) file.');
+      if (!isPdf && !isDocx) {
+        Alert.alert('Unsupported File', 'Please upload a Word document (.docx) or plain text (.txt) file. Old .doc format is not supported.');
         return;
       }
 
