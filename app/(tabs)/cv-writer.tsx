@@ -610,7 +610,9 @@ export default function CVWriterScreen() {
               <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Generate CV</Text>
             </LinearGradient>
           ) : (
-            <Text style={styles.modeBtnText}>Generate CV</Text>
+            <View style={styles.modeBtnInner}>
+              <Text style={styles.modeBtnText}>Generate CV</Text>
+            </View>
           )}
         </AnimatedPressable>
 
@@ -628,7 +630,9 @@ export default function CVWriterScreen() {
               <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Upload CV</Text>
             </LinearGradient>
           ) : (
-            <Text style={styles.modeBtnText}>Upload CV</Text>
+            <View style={styles.modeBtnInner}>
+              <Text style={styles.modeBtnText}>Upload CV</Text>
+            </View>
           )}
         </AnimatedPressable>
       </View>
@@ -1065,10 +1069,14 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     flex: 1,
-    paddingVertical: 10,
     borderRadius: 9,
     alignItems: 'center',
     overflow: 'hidden',
+  },
+  modeBtnInner: {
+    width: '100%',
+    paddingVertical: 10,
+    alignItems: 'center',
   },
   modeBtnActive: {},
   modeBtnGradient: {
