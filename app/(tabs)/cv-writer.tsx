@@ -12,7 +12,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FileText, Copy, CheckCircle, ChevronDown, ChevronUp, X, Upload } from 'lucide-react-native';
+import { FileText, Copy, CheckCircle, X, Upload, Save, ChevronDown, ChevronUp } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -27,6 +27,34 @@ const USER_CV_KEY = 'user_cv_text';
 
 type Mode = 'generate' | 'upload';
 type CVSection = 'summary' | 'experience' | 'skills' | 'achievements';
+
+// --- Regex helpers for auto-population ---
+const EMAIL_REGEX = /[\w.+-]+@[\w-]+\.[a-z]{2,}/i;
+const SECTION_HEADER_REGEX = /^(summary|profile|about|experience|employment|work|education|skills|achievements|contact|references|objective|qualifications)/i;
+
+function detectNameFromText(text: string): string {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  for (const line of lines.slice(0, 6)) {
+    // Skip lines that look like section headers, emails, phone numbers, URLs
+    if (SECTION_HEADER_REGEX.test(line)) break;
+    if (EMAIL_REGEX.test(line)) continue;
+    if (/\d{4,}/.test(line)) continue; // phone numbers / years
+    if (/https?:\/\/|www\.|linkedin\.com/i.test(line)) continue;
+    if (/[,|•·@]/.test(line)) continue; // address lines, combined fields
+    // A name is typically 2-4 words, each capitalised, under 50 chars
+    const words = line.split(/\s+/);
+    if (words.length >= 2 && words.length <= 5 && line.length < 50) {
+      const looksLikeName = words.every(w => /^[A-Z][a-zA-Z'-]+$/.test(w));
+      if (looksLikeName) return line;
+    }
+  }
+  return '';
+}
+
+function detectEmailFromText(text: string): string {
+  const match = text.match(EMAIL_REGEX);
+  return match ? match[0] : '';
+}
 
 function parseCVText(text: string): {
   summary: string;
@@ -96,7 +124,6 @@ function SkillChip({ label, onRemove }: { label: string; onRemove: () => void })
     </View>
   );
 }
-
 
 function SectionTab({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
@@ -222,6 +249,11 @@ export default function CVWriterScreen() {
   const [savingCV, setSavingCV] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
 
+  // Parsed CV panel state
+  const [parsedText, setParsedText] = useState('');
+  const [parsedPanelExpanded, setParsedPanelExpanded] = useState(true);
+  const [parsedCopied, setParsedCopied] = useState(false);
+
   if (!isSubscribed) {
     return (
       <View style={{ flex: 1, paddingTop: insets.top }}>
@@ -282,7 +314,6 @@ export default function CVWriterScreen() {
     setGenLoading(true);
     setGenResult(null);
     try {
-      // Local generation — no backend needed
       const result = generateCVLocally({
         name: genName.trim(),
         email: genEmail.trim(),
@@ -302,6 +333,19 @@ export default function CVWriterScreen() {
     } finally {
       setGenLoading(false);
     }
+  };
+
+  const handleClearGenerate = () => {
+    console.log('[CVWriter] Clear generate form pressed');
+    setGenName('');
+    setGenEmail('');
+    setGenRole('');
+    setGenSummary('');
+    setSkills([]);
+    setSkillInput('');
+    setExperienceEntries([{ title: '', company: '', duration: '', description: '' }]);
+    setEducationEntries([{ degree: '', institution: '', year: '' }]);
+    setGenResult(null);
   };
 
   const handleSaveCV = async () => {
@@ -344,6 +388,37 @@ export default function CVWriterScreen() {
     }
   };
 
+  const handleClearUpload = () => {
+    console.log('[CVWriter] Clear upload pressed');
+    setImpCV('');
+    setParsedText('');
+  };
+
+  // Called after text is extracted from a file — auto-populates fields and shows parsed panel
+  const handleExtractedText = (text: string) => {
+    setImpCV(text);
+    setParsedText(text);
+    setParsedPanelExpanded(true);
+
+    // Auto-populate Name if empty
+    if (!genName.trim()) {
+      const detectedName = detectNameFromText(text);
+      if (detectedName) {
+        console.log('[CVWriter] Auto-populated name from CV:', detectedName);
+        setGenName(detectedName);
+      }
+    }
+
+    // Auto-populate Email if empty
+    if (!genEmail.trim()) {
+      const detectedEmail = detectEmailFromText(text);
+      if (detectedEmail) {
+        console.log('[CVWriter] Auto-populated email from CV:', detectedEmail);
+        setGenEmail(detectedEmail);
+      }
+    }
+  };
+
   const handleUploadFile = async () => {
     console.log('[CVWriter] Upload CV file pressed');
     let pickerResult: DocumentPicker.DocumentPickerResult | null = null;
@@ -379,9 +454,9 @@ export default function CVWriterScreen() {
       if (assetName.toLowerCase().endsWith('.txt')) {
         // Plain text — read directly, no backend needed
         const text = await FS.readAsStringAsync(asset.uri, { encoding: 'utf8' as any });
-        setImpCV(text);
         console.log('[CVWriter] TXT file read, length:', text.length);
-        Alert.alert('CV Loaded', 'Your CV text has been loaded. You can now review it below and tap Save to Profile.');
+        handleExtractedText(text);
+        Alert.alert('CV Loaded', 'Your CV text has been loaded. Fields have been pre-filled where possible — review below and tap Save to Profile.');
         return;
       }
 
@@ -431,8 +506,8 @@ export default function CVWriterScreen() {
       if (!text) throw new Error('No text could be extracted from the document.');
 
       console.log('[CVWriter] DOCX parsed on-device, text length:', text.length);
-      setImpCV(text);
-      Alert.alert('CV Loaded', 'Your CV has been extracted. Review the text below and tap Save to Profile.');
+      handleExtractedText(text);
+      Alert.alert('CV Loaded', 'Your CV has been extracted. Fields have been pre-filled where possible — review below and tap Save to Profile.');
     } catch (e: any) {
       console.error('[CVWriter] File upload/parse error:', e);
       const msg = e?.message || 'Could not read the file.';
@@ -463,12 +538,26 @@ export default function CVWriterScreen() {
     await copyToClipboard(genResult.cv_text, 'gen');
   };
 
+  const handleCopyParsedText = async () => {
+    if (!parsedText) return;
+    console.log('[CVWriter] Copy parsed CV text pressed, length:', parsedText.length);
+    await Clipboard.setStringAsync(parsedText);
+    setParsedCopied(true);
+    setTimeout(() => setParsedCopied(false), 2000);
+  };
+
   const sectionContent = genResult ? {
     summary: genResult.sections?.professional_summary || '',
     experience: genResult.sections?.experience || '',
     skills: genResult.sections?.skills || '',
     achievements: genResult.sections?.achievements || '',
   } : null;
+
+  const parsedPanelChevron = parsedPanelExpanded ? (
+    <ChevronUp size={16} color={COLORS.textSecondary} />
+  ) : (
+    <ChevronDown size={16} color={COLORS.textSecondary} />
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -526,6 +615,39 @@ export default function CVWriterScreen() {
       >
         {mode === 'generate' ? (
           <>
+            {/* Primary action row — Generate first, Clear second */}
+            <View style={styles.topActionRow}>
+              <AnimatedPressable
+                style={[styles.topPrimaryBtn, genLoading && styles.topBtnDisabled]}
+                onPress={handleGenerate}
+                disabled={genLoading}
+              >
+                <LinearGradient
+                  colors={['#7C3AED', '#4F46E5']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.topPrimaryBtnGradient}
+                >
+                  {genLoading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <FileText size={15} color="#FFFFFF" />
+                      <Text style={styles.topPrimaryBtnText}>Generate CV</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={styles.topSecondaryBtn}
+                onPress={handleClearGenerate}
+              >
+                <X size={15} color={COLORS.textSecondary} />
+                <Text style={styles.topSecondaryBtnText}>Clear</Text>
+              </AnimatedPressable>
+            </View>
+
             <Text style={styles.fieldLabel}>Full Name</Text>
             <TextInput
               style={styles.input}
@@ -693,6 +815,7 @@ export default function CVWriterScreen() {
               </View>
             )}
 
+            {/* Bottom Generate button (duplicate for convenience after long form) */}
             <AnimatedPressable
               style={[styles.primaryBtn, genLoading && styles.primaryBtnDisabled]}
               onPress={handleGenerate}
@@ -758,37 +881,121 @@ export default function CVWriterScreen() {
               </Text>
             </View>
 
-            {/* Upload CV File button */}
-            <AnimatedPressable
-              style={[styles.uploadFileBtn, uploadingFile && styles.primaryBtnDisabled]}
-              onPress={handleUploadFile}
-              disabled={uploadingFile}
-            >
-              {uploadingFile ? (
-                <>
-                  <ActivityIndicator color={COLORS.primaryLight} size="small" />
-                  <Text style={styles.uploadFileBtnText}>Reading file…</Text>
-                </>
-              ) : (
-                <>
-                  <Upload size={16} color={COLORS.primaryLight} />
-                  <Text style={styles.uploadFileBtnText}>Upload .docx or .txt file</Text>
-                </>
-              )}
-            </AnimatedPressable>
+            {/* Primary action row — Save first, Upload second, Clear third */}
+            <View style={styles.topActionRow}>
+              <AnimatedPressable
+                style={[styles.topPrimaryBtn, savingCV && styles.topBtnDisabled]}
+                onPress={handleSaveCV}
+                disabled={savingCV}
+              >
+                <LinearGradient
+                  colors={['#7C3AED', '#4F46E5']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.topPrimaryBtnGradient}
+                >
+                  {savingCV ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Save size={15} color="#FFFFFF" />
+                      <Text style={styles.topPrimaryBtnText}>Save to Profile</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={[styles.topSecondaryBtn, uploadingFile && styles.topBtnDisabled]}
+                onPress={handleUploadFile}
+                disabled={uploadingFile}
+              >
+                {uploadingFile ? (
+                  <ActivityIndicator color={COLORS.primaryLight} size="small" style={{ width: 15, height: 15 }} />
+                ) : (
+                  <Upload size={15} color={COLORS.primaryLight} />
+                )}
+                <Text style={[styles.topSecondaryBtnText, { color: COLORS.primaryLight }]}>
+                  {uploadingFile ? 'Reading…' : 'Upload file'}
+                </Text>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={styles.topSecondaryBtn}
+                onPress={handleClearUpload}
+              >
+                <X size={15} color={COLORS.textSecondary} />
+                <Text style={styles.topSecondaryBtnText}>Clear</Text>
+              </AnimatedPressable>
+            </View>
 
             <Text style={styles.fieldLabel}>Paste Your CV</Text>
             <TextInput
               style={[styles.input, styles.textareaLarge]}
-              placeholder="Paste your CV here or upload a .txt file above..."
+              placeholder="Paste your CV here or upload a .docx / .txt file above..."
               placeholderTextColor={COLORS.textMuted}
               value={impCV}
-              onChangeText={setImpCV}
+              onChangeText={text => {
+                setImpCV(text);
+                // When user manually pastes text, also populate the parsed panel
+                if (text.length > 50) {
+                  setParsedText(text);
+                  setParsedPanelExpanded(true);
+                }
+              }}
               multiline
               numberOfLines={8}
               textAlignVertical="top"
             />
 
+            {/* Parsed CV Text Panel */}
+            {parsedText.length > 0 && (
+              <View style={styles.parsedPanel}>
+                <AnimatedPressable
+                  style={styles.parsedPanelHeader}
+                  onPress={() => {
+                    console.log('[CVWriter] Toggle parsed CV panel, expanded:', !parsedPanelExpanded);
+                    setParsedPanelExpanded(prev => !prev);
+                  }}
+                >
+                  <View style={styles.parsedPanelHeaderLeft}>
+                    <FileText size={14} color={COLORS.textSecondary} />
+                    <Text style={styles.parsedPanelTitle}>Parsed CV Text</Text>
+                    <Text style={styles.parsedPanelSubtitle}>— copy &amp; paste into fields above</Text>
+                  </View>
+                  <View style={styles.parsedPanelHeaderRight}>
+                    <AnimatedPressable
+                      style={[styles.parsedCopyBtn, parsedCopied && styles.parsedCopyBtnSuccess]}
+                      onPress={handleCopyParsedText}
+                    >
+                      {parsedCopied ? (
+                        <CheckCircle size={13} color={COLORS.success} />
+                      ) : (
+                        <Copy size={13} color={COLORS.primaryLight} />
+                      )}
+                      <Text style={[styles.parsedCopyBtnText, parsedCopied && { color: COLORS.success }]}>
+                        {parsedCopied ? 'Copied!' : 'Copy All'}
+                      </Text>
+                    </AnimatedPressable>
+                    {parsedPanelChevron}
+                  </View>
+                </AnimatedPressable>
+
+                {parsedPanelExpanded && (
+                  <ScrollView
+                    style={styles.parsedTextScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                  >
+                    <Text style={styles.parsedText} selectable>
+                      {parsedText}
+                    </Text>
+                  </ScrollView>
+                )}
+              </View>
+            )}
+
+            {/* Bottom Save button (convenience duplicate) */}
             <AnimatedPressable
               style={[styles.primaryBtn, savingCV && styles.primaryBtnDisabled]}
               onPress={handleSaveCV}
@@ -859,6 +1066,51 @@ const styles = StyleSheet.create({
   modeBtnTextActive: { color: '#FFFFFF' },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
+
+  // Top action row — primary + secondary buttons
+  topActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  topPrimaryBtn: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    minHeight: 44,
+  },
+  topPrimaryBtnGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    height: 44,
+    paddingHorizontal: 16,
+  },
+  topPrimaryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  topSecondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.surfaceSecondary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 44,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  topSecondaryBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  topBtnDisabled: { opacity: 0.6 },
+
   infoBox: {
     backgroundColor: COLORS.primaryMuted,
     borderRadius: 12,
@@ -946,17 +1198,6 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 13, fontWeight: '500', color: COLORS.primaryLight },
   chipRemove: { padding: 2 },
-  focusChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  focusChipSelected: { backgroundColor: COLORS.primaryMuted, borderColor: COLORS.primary },
-  focusChipText: { fontSize: 13, fontWeight: '500', color: COLORS.textSecondary },
-  focusChipTextSelected: { color: COLORS.primaryLight, fontWeight: '600' },
   primaryBtn: {
     borderRadius: 14,
     overflow: 'hidden',
@@ -970,20 +1211,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnDisabled: { opacity: 0.6 },
   primaryBtnText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  uploadFileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.surfaceSecondary,
-    borderRadius: 12,
-    paddingVertical: 13,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderStyle: 'dashed',
-  },
-  uploadFileBtnText: { fontSize: 14, fontWeight: '600', color: COLORS.primaryLight },
   resultCard: {
     backgroundColor: COLORS.surfaceSecondary,
     borderRadius: 16,
@@ -1033,6 +1260,77 @@ const styles = StyleSheet.create({
     borderColor: COLORS.borderLight,
   },
   sectionContentText: { fontSize: 13, color: COLORS.text, lineHeight: 20 },
+
+  // Parsed CV panel
+  parsedPanel: {
+    backgroundColor: COLORS.surfaceSecondary,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  parsedPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  parsedPanelHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  parsedPanelTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  parsedPanelSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  parsedPanelHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  parsedCopyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.primaryMuted,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  parsedCopyBtnSuccess: {
+    backgroundColor: COLORS.successMuted,
+    borderColor: 'rgba(34,197,94,0.3)',
+  },
+  parsedCopyBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primaryLight,
+  },
+  parsedTextScroll: {
+    maxHeight: 240,
+  },
+  parsedText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+    fontFamily: 'Courier',
+    padding: 14,
+  },
+
   successBanner: {
     backgroundColor: 'rgba(34,197,94,0.12)',
     borderRadius: 10,

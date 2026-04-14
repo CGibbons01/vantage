@@ -1,10 +1,10 @@
 import React from "react";
 import { Dimensions, Image, View } from "react-native";
 import { Tabs } from "expo-router";
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import FloatingTabBar from "@/components/FloatingTabBar";
 import { useSubscriptionGuard } from "@/hooks/useSubscriptionGuard";
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function HeaderLogo() {
   return (
