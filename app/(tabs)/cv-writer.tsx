@@ -452,7 +452,6 @@ export default function CVWriterScreen() {
       pickerResult = await DocumentPicker.getDocumentAsync({
         type: [
           'text/plain',
-          'application/pdf',
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ],
         copyToCacheDirectory: true,
