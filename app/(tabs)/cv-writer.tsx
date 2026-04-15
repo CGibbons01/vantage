@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Pressable,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -596,7 +597,7 @@ export default function CVWriterScreen() {
 
       {/* Mode toggle */}
       <View style={styles.modeToggle}>
-        <AnimatedPressable
+        <Pressable
           style={[styles.modeBtn, mode === 'generate' && styles.modeBtnActive]}
           onPress={() => { console.log('[CVWriter] Mode toggle: generate'); setMode('generate'); }}
         >
@@ -614,9 +615,9 @@ export default function CVWriterScreen() {
               <Text style={styles.modeBtnText}>Generate CV</Text>
             </View>
           )}
-        </AnimatedPressable>
+        </Pressable>
 
-        <AnimatedPressable
+        <Pressable
           style={[styles.modeBtn, mode === 'upload' && styles.modeBtnActive]}
           onPress={() => { console.log('[CVWriter] Mode toggle: upload'); setMode('upload'); }}
         >
@@ -634,7 +635,7 @@ export default function CVWriterScreen() {
               <Text style={styles.modeBtnText}>Upload CV</Text>
             </View>
           )}
-        </AnimatedPressable>
+        </Pressable>
       </View>
 
       <ScrollView
