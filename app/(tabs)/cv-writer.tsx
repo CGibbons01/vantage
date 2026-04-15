@@ -221,7 +221,7 @@ export default function CVWriterScreen() {
   const { isSubscribed } = useSubscription();
 
   const { tab } = useLocalSearchParams<{ tab?: string }>();
-  const [mode, setMode] = useState<Mode>(tab === 'upload' ? 'upload' : 'generate');
+  const [mode, setMode] = useState<Mode>(tab === 'generate' ? 'generate' : 'upload');
 
   // Generate mode state
   const [genName, setGenName] = useState('');
@@ -598,26 +598,6 @@ export default function CVWriterScreen() {
       {/* Mode toggle */}
       <View style={styles.modeToggle}>
         <Pressable
-          style={[styles.modeBtn, mode === 'generate' && styles.modeBtnActive]}
-          onPress={() => { console.log('[CVWriter] Mode toggle: generate'); setMode('generate'); }}
-        >
-          {mode === 'generate' ? (
-            <LinearGradient
-              colors={['#7C3AED', '#4F46E5']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.modeBtnGradient}
-            >
-              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Generate CV</Text>
-            </LinearGradient>
-          ) : (
-            <View style={styles.modeBtnInner}>
-              <Text style={styles.modeBtnText}>Generate CV</Text>
-            </View>
-          )}
-        </Pressable>
-
-        <Pressable
           style={[styles.modeBtn, mode === 'upload' && styles.modeBtnActive]}
           onPress={() => { console.log('[CVWriter] Mode toggle: upload'); setMode('upload'); }}
         >
@@ -633,6 +613,26 @@ export default function CVWriterScreen() {
           ) : (
             <View style={styles.modeBtnInner}>
               <Text style={styles.modeBtnText}>Upload CV</Text>
+            </View>
+          )}
+        </Pressable>
+
+        <Pressable
+          style={[styles.modeBtn, mode === 'generate' && styles.modeBtnActive]}
+          onPress={() => { console.log('[CVWriter] Mode toggle: generate'); setMode('generate'); }}
+        >
+          {mode === 'generate' ? (
+            <LinearGradient
+              colors={['#7C3AED', '#4F46E5']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.modeBtnGradient}
+            >
+              <Text style={[styles.modeBtnText, styles.modeBtnTextActive]}>Generate CV</Text>
+            </LinearGradient>
+          ) : (
+            <View style={styles.modeBtnInner}>
+              <Text style={styles.modeBtnText}>Generate CV</Text>
             </View>
           )}
         </Pressable>
